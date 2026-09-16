@@ -227,7 +227,7 @@ JSON
 
 # Cloudflare: token (Zone > DNS > Edit, solo fixcomap.com) y zone id, SOLO en el environment
 gh secret   set CLOUDFLARE_API_TOKEN -R $R --env platform   # pide el valor por stdin
-gh variable set CLOUDFLARE_ZONE_ID   -R $R --env platform --body "<zone id>"
+gh secret   set CLOUDFLARE_ZONE_ID   -R $R --env platform   # secret, no variable: GitHub imprime las vars en los logs
 ```
 
 Renovate: instalar la GitHub App de Mend Renovate en la organización con acceso a `fixcomap/platform`.
