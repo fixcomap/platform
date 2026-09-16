@@ -317,6 +317,14 @@ printf '%s' 'postgresql://USER:PASS@HOST/neondb?sslmode=require' | \
 
 Las instancias en ejecución siguen con la versión anterior hasta que escalan a cero (segundos sin tráfico).
 
+## Disponibilidad
+
+Uptime check de Cloud Monitoring (`infra/app/monitoring.tf`): HTTPS a `https://app.fixcomap.com/healthz`
+cada 5 min desde 3 regiones, con alerta por email a `billing@fixcomap.com` si falla desde más de una región
+durante 5 min (se cierra sola al recuperarse). Free tier: 1M ejecuciones/mes (uso ~26k), alertas y email
+sin coste. Cloud Monitoring no verifica el email: comprobar que llega la primera notificación
+(Monitoring → Alerting → política → *Test*).
+
 ## Verificar la firma de una imagen
 
 ```sh

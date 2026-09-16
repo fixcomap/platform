@@ -14,6 +14,14 @@ resource "google_project_iam_member" "gh_deployer_run" {
   member  = google_service_account.gh_deployer.member
 }
 
+# Uptime check, canal de notificación y política de alerta de la app (L2).
+# monitoring.editor no incluye ningún setIamPolicy.
+resource "google_project_iam_member" "gh_deployer_monitoring" {
+  project = var.project_id
+  role    = "roles/monitoring.editor"
+  member  = google_service_account.gh_deployer.member
+}
+
 # actAs sobre app-runtime, y solo sobre ella: es lo que Cloud Run exige para
 # desplegar un servicio con esa identidad.
 resource "google_service_account_iam_member" "gh_deployer_actas_runtime" {
