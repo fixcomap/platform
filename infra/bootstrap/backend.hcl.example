@@ -1,0 +1,3 @@
+# tofu init -backend-config=backend.hcl
+bucket = "fixcomap-core-tfstate"
+prefix = "bootstrap"
