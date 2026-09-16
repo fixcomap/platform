@@ -10,6 +10,15 @@ resource "cloudflare_pages_project" "landing" {
   production_branch = "main"
 }
 
+# El proyecto lo crea wrangler (deploy.yml de fixcomap/web, idempotente) y aquí
+# se importa al estado; si ya está en el estado, el bloque se ignora. Motivo:
+# crearlo desde el provider con source = github exige la GitHub App de Cloudflare
+# (error 8000011), que no queremos: publica el pipeline, no Cloudflare.
+import {
+  to = cloudflare_pages_project.landing
+  id = "${var.cloudflare_account_id}/fixcomap-landing"
+}
+
 # Dominios del proyecto. Pages emite el certificado (Google Trust Services) al
 # ver los CNAME de abajo.
 resource "cloudflare_pages_domain" "apex" {
