@@ -172,6 +172,14 @@ Ramas y protección: ver `CONTRIBUTING.md`.
 
 ### 4. L1 y L2 por pipeline
 
+**Arranque en frío.** `tf-plan` se crea en L1, así que hasta que L1 esté aplicado ningún PR puede
+planificar: los jobs `tofu (bootstrap|platform|app)` fallan en `tofu plan` con
+`404 Gaia id not found for email tf-plan@...` (la autenticación OIDC en sí funciona; es el primer uso
+de la SA lo que falla). Orden obligatorio la primera vez: L0 en Cloud Shell → variables de GitHub →
+merge a `main` y aprobación de `apply-platform.yml` → **después** aplicar los rulesets. Si los rulesets
+ya existen antes de L1, es un bloqueo circular: `main` exige checks verdes y los checks no pueden estar
+verdes hasta que `main` haya aplicado L1.
+
 Mergear en `main` (vía `release/*`) con `infra/` presente. `apply-platform.yml` queda esperando
 aprobación en el environment `platform`; al aprobar, aplica L0 (sin cambios), L1 y `dns`. Después
 `apply-app.yml` construye, firma y despliega la app y aplica L2.
