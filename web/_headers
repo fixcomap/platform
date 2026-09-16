@@ -1,0 +1,6 @@
+# Cabeceras que Cloudflare Pages aplica a todas las rutas. Sin JS, así que la CSP puede ser estricta.
+/*
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()

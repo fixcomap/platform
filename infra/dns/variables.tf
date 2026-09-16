@@ -8,3 +8,8 @@ variable "app_hostname" {
   type        = string
   default     = "app.fixcomap.com"
 }
+
+variable "cloudflare_account_id" {
+  description = "Cuenta de Cloudflare (Pages es un recurso de cuenta, no de zona). Llega por TF_VAR_cloudflare_account_id (secret del environment platform)."
+  type        = string
+}
