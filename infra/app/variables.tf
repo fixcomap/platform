@@ -45,5 +45,5 @@ variable "enable_domain_mapping" {
     en Search Console (paso manual, ver README). Hasta entonces, false.
   EOT
   type        = bool
-  default     = false
+  default     = true
 }
