@@ -30,9 +30,10 @@ resource "google_artifact_registry_repository_iam_member" "gh_deployer_writer" {
   member     = google_service_account.gh_deployer.member
 }
 
-# Estado de L2 y nada más. La condición limita el binding al prefijo app/;
-# GCS evalúa el prefijo también en las llamadas list, que es lo que usa el
-# backend gcs al hacer init.
+# Estado de L2 y nada más. La condición limita el binding al prefijo app. GCS
+# evalúa resource.name también en las llamadas list (contra el parámetro prefix
+# de la petición); el backend gcs lista con prefix=app, sin barra final, así que
+# la condición no puede llevarla. Ningún otro prefijo del bucket empieza por "app".
 resource "google_storage_bucket_iam_member" "gh_deployer_state" {
   bucket = var.state_bucket
   role   = "roles/storage.objectUser"
@@ -41,7 +42,7 @@ resource "google_storage_bucket_iam_member" "gh_deployer_state" {
   condition {
     title       = "solo-prefijo-app"
     description = "Estado de L2 únicamente; L0 y L1 son de tf-platform."
-    expression  = "resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/app/\")"
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/app\")"
   }
 }
 
