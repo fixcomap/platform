@@ -172,6 +172,19 @@ Ramas y protección: ver `CONTRIBUTING.md`.
 
 ### 4. L1 y L2 por pipeline
 
+**Arranque en frío.** `tf-plan` se crea en L1, y L1 solo se aplica desde `main`. El primer PR no
+puede planificar: la federación OIDC funciona, pero suplantar `tf-plan` devuelve `404 NOT_FOUND`
+(`Gaia id not found for email tf-plan@...`). `pr-checks.yml` detecta **ese error concreto** en el paso
+`tf-plan existe`, termina el job en verde con un aviso en el step summary y publica en el PR
+"plan omitido (arranque en frío)". Cualquier otro fallo de autenticación sigue tumbando el check.
+Secuencia:
+
+1. L0 desde Cloud Shell y variables de GitHub (pasos 2 y 3).
+2. Primer PR `release/*` → `main`: checks verdes **sin plan**. Se mergea y se aprueba `apply-platform.yml`
+   (crea L1 y con ella `tf-plan`).
+3. Desde ese momento todos los PRs planifican. Si vuelve a aparecer el aviso, es que `tf-plan` ha
+   desaparecido: `drift.yml` y `cost-guard.yml` fallan a diario en ese caso, no lo silencian.
+
 Mergear en `main` (vía `release/*`) con `infra/` presente. `apply-platform.yml` queda esperando
 aprobación en el environment `platform`; al aprobar, aplica L0 (sin cambios), L1 y `dns`. Después
 `apply-app.yml` construye, firma y despliega la app y aplica L2.
@@ -220,3 +233,7 @@ cosign verify \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   europe-west1-docker.pkg.dev/fixcomap-core/docker/app@sha256:<digest>
 ```
+
+## Estado
+
+- 2026-09-16: smoke test del pipeline (`pr-checks.yml`) desde `feature/smoke-test`.
