@@ -36,7 +36,7 @@ variable "app_public" {
     ponga a true después.
   EOT
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "github_org" {
