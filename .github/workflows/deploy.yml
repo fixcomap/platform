@@ -91,7 +91,11 @@ jobs:
 
       - name: plan L0 + L1
         id: plan
-        if: steps.sa.outputs.exists == 'true'
+        # En workflow_dispatch no se planifica aquí: dispatch significa "quiero
+        # aplicar" y es la salida cuando tf-plan no puede planificar (p. ej. le
+        # falta un permiso que precisamente L1 corrige). platform-apply hace su
+        # propio plan con tf-platform y espera aprobación igualmente.
+        if: steps.sa.outputs.exists == 'true' && github.event_name != 'workflow_dispatch'
         run: |
           changed=false
           for layer in bootstrap platform; do
