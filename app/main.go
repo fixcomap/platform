@@ -14,7 +14,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	fmt.Fprintf(w, "fixcomap platform %s\n", os.Getenv("APP_VERSION"))
+	_, _ = fmt.Fprintf(w, "fixcomap platform %s\n", os.Getenv("APP_VERSION"))
 }
 
 func healthz(w http.ResponseWriter, _ *http.Request) {
