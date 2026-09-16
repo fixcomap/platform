@@ -1,0 +1,129 @@
+# Regla 1: el coste manda. Dos barreras:
+#  - pr: bloquea recursos con coste fijo (Cloud SQL, LB, NAT, IPs estáticas, GKE,
+#    KMS…) y configuraciones de Cloud Run que facturan sin tráfico, salvo que el
+#    PR lleve la etiqueta cost-approved y una línea "Coste estimado:" en el cuerpo.
+#  - inventory: cada mañana inventaría lo que existe de verdad en el proyecto
+#    (con tf-plan, solo lectura) y abre un issue si aparece algo con coste fijo o
+#    si Artifact Registry se acerca al free tier.
+name: cost-guard
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - infra/**
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: fixcomap-core
+  GCP_REGION: europe-west1
+  TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
+  AR_WARN_BYTES: "400000000" # 400 MB de 500 MB de free tier
+
+permissions: {}
+
+jobs:
+  pr:
+    name: recursos con coste en el PR
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: tipos de recurso con coste fijo
+        env:
+          APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'cost-approved') }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Cada patrón es un servicio que factura por existir, no por uso.
+          DENY='google_sql_|google_compute_(address|global_address|forwarding_rule|global_forwarding_rule|backend_service|url_map|target_https_proxy|router|router_nat|instance|instance_template|region_instance_group_manager|disk)|google_container_(cluster|node_pool)|google_redis_|google_memorystore_|google_kms_|google_cloud_run_v2_worker_pool|google_vpc_access_connector|google_filestore_|google_bigtable_|google_spanner_|google_alloydb_|google_dataproc_|google_composer_|google_notebooks_|google_workbench_|google_apigee_|google_gke_hub_'
+          hits=$(grep -rnE "resource \"($DENY)" infra --include='*.tf' || true)
+          if [ -z "$hits" ]; then echo "sin recursos de coste fijo"; exit 0; fi
+          echo "$hits"
+          if [ "$APPROVED" != "true" ]; then
+            echo "::error::Recurso con coste fijo sin la etiqueta cost-approved"; exit 1
+          fi
+          echo "$BODY" | grep -qiE '^coste estimado:' || {
+            echo "::error::La etiqueta cost-approved exige una línea 'Coste estimado: <€/mes y por qué>' en el cuerpo del PR"; exit 1; }
+
+      - name: cloud run sin facturación en reposo
+        run: |
+          f=infra/app/cloud_run.tf
+          fail=0
+          grep -qE 'min_instance_count\s*=\s*0' $f || { echo "::error file=$f::min_instance_count debe ser 0 (instancias mínimas facturan 24/7)"; fail=1; }
+          grep -qE 'cpu_idle\s*=\s*true' $f       || { echo "::error file=$f::cpu_idle debe ser true (CPU always-on factura sin tráfico)"; fail=1; }
+          max=$(grep -oE 'max_instance_count\s*=\s*[0-9]+' $f | grep -oE '[0-9]+$' || echo 0)
+          [ "${max:-0}" -le 3 ] || { echo "::error file=$f::max_instance_count=$max > 3; tope de gasto ante un pico"; fail=1; }
+          grep -qE 'cleanup_policy_dry_run\s*=\s*false' infra/platform/artifact_registry.tf || { echo "::error::cleanup_policy_dry_run debe ser false o AR crece sin límite"; fail=1; }
+          exit $fail
+
+  inventory:
+    name: inventario de recursos con coste
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    steps:
+      - name: auth GCP (tf-plan)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.TF_PLAN_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: inventario
+        id: inv
+        run: |
+          # Una API deshabilitada hace fallar el list: se trata como "0 recursos".
+          count() { gcloud "$@" --project "$GCP_PROJECT_ID" --format 'value(name)' 2>/dev/null | grep -c . || true; }
+          {
+            echo "compute_addresses=$(count compute addresses list)"
+            echo "forwarding_rules=$(count compute forwarding-rules list)"
+            echo "routers=$(count compute routers list)"
+            echo "instances=$(count compute instances list)"
+            echo "sql_instances=$(count sql instances list)"
+            echo "gke_clusters=$(count container clusters list)"
+            echo "redis=$(count redis instances list --region "$GCP_REGION")"
+            echo "kms_keyrings=$(count kms keyrings list --location "$GCP_REGION")"
+            echo "vpc_connectors=$(count compute networks vpc-access connectors list --region "$GCP_REGION")"
+            echo "run_min_instances=$(gcloud run services list --project "$GCP_PROJECT_ID" --region "$GCP_REGION" \
+              --format 'value(spec.template.metadata.annotations."autoscaling.knative.dev/minScale")' 2>/dev/null | grep -vE '^(0|)$' | grep -c . || true)"
+            echo "ar_bytes=$(gcloud artifacts repositories describe docker --location "$GCP_REGION" --project "$GCP_PROJECT_ID" --format 'value(sizeBytes)' 2>/dev/null || echo 0)"
+          } | tee inventory.txt
+          findings=""
+          while IFS='=' read -r k v; do
+            case "$k" in
+              ar_bytes) [ "${v:-0}" -ge "$AR_WARN_BYTES" ] && findings="$findings\n- Artifact Registry: $((v/1000000)) MB de 500 MB" ;;
+              *) [ "${v:-0}" -gt 0 ] && findings="$findings\n- $k: $v" ;;
+            esac
+          done < inventory.txt
+          {
+            echo "findings<<EOF"; printf "%b" "$findings"; echo; echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          printf '%s\n' '## Inventario de coste' '```' "$(cat inventory.txt)" '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: abrir/actualizar issue
+        if: steps.inv.outputs.findings != ''
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          FINDINGS: ${{ steps.inv.outputs.findings }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const title = '[cost] recursos fuera del free tier';
+            const run = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const body = `Inventario de ${new Date().toISOString().slice(0,10)} (${run}):\n${process.env.FINDINGS}\n\nRegla 1: nada fuera del free tier sin coste mensual justificado.`;
+            const open = await github.paginate(github.rest.issues.listForRepo, { owner, repo, state: 'open', labels: 'cost' });
+            const existing = open.find(i => i.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
+            } else {
+              await github.rest.issues.create({ owner, repo, title, body, labels: ['cost'] });
+            }

@@ -1,0 +1,7 @@
+project_id     = "fixcomap-core"
+project_number = "<numero de proyecto>"
+region       = "europe-west1"
+state_bucket = "fixcomap-core-tfstate"
+github_org   = "fixcomap"
+github_repo  = "platform"
+wif_pool_id  = "github"

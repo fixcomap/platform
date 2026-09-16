@@ -1,0 +1,110 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    ":semanticCommitsDisabled"
+  ],
+  "commitMessagePrefix": "chore(deps):",
+  "commitMessageLowerCase": "always",
+  "baseBranches": [
+    "develop"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "prConcurrentLimit": 3,
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "packageRules": [
+    {
+      "description": "Actions: mantener el SHA pineado y el comentario # vX.Y.Z",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "pinDigests": true,
+      "groupName": "github actions"
+    },
+    {
+      "description": "Providers de OpenTofu: solo minor/patch dentro del ~> fijado; los major se revisan a mano contra la guía de upgrade",
+      "matchManagers": [
+        "terraform"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "tofu providers"
+    },
+    {
+      "matchManagers": [
+        "terraform"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "matchManagers": [
+        "dockerfile",
+        "gomod"
+      ],
+      "groupName": "app"
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "OpenTofu fijado como env TOFU_VERSION en los workflows",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "TOFU_VERSION: (?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "opentofu/opentofu",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "description": "tflint fijado en setup-tflint",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "tflint_version: v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "terraform-linters/tflint",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "description": "gitleaks por imagen ghcr",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "ghcr\\.io/gitleaks/gitleaks:v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "gitleaks/gitleaks",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "description": "ruleset google de tflint en .tflint.hcl",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.tflint\\.hcl$/"
+      ],
+      "matchStrings": [
+        "version = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\"\\s*\\n\\s*source\\s*=\\s*\"github.com/(?<depName>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    }
+  ]
+}

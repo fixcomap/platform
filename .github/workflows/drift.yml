@@ -1,0 +1,96 @@
+# Plan nocturno de todas las capas con tf-plan. Si hay cambios pendientes
+# (exit code 2), abre o actualiza un issue por capa con etiqueta "drift".
+name: drift
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: fixcomap-core
+  GCP_REGION: europe-west1
+  STATE_BUCKET: fixcomap-core-tfstate
+  TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
+  TOFU_VERSION: 1.12.6
+  CLOUD_RUN_SERVICE: app
+
+permissions: {}
+
+jobs:
+  plan:
+    name: drift (${{ matrix.layer }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # dns queda fuera: su token solo existe en el environment platform y un cron
+        # no puede pedir aprobación. Cloudflare conserva su propio audit log.
+        layer: [bootstrap, platform, app]
+    defaults:
+      run:
+        working-directory: infra/${{ matrix.layer }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tofu_wrapper: false
+
+      - name: auth GCP (tf-plan)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.TF_PLAN_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        if: matrix.layer == 'app'
+
+      - name: imagen desplegada (L2)
+        if: matrix.layer == 'app'
+        run: |
+          IMAGE=$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
+            --format 'value(spec.template.spec.containers[0].image)' 2>/dev/null || true)
+          echo "TF_VAR_image=${IMAGE:-us-docker.pkg.dev/cloudrun/container/hello}" >> "$GITHUB_ENV"
+
+      - name: tofu plan -detailed-exitcode
+        id: plan
+        env:
+          TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=${{ matrix.layer }}"
+          set +e
+          tofu plan -input=false -lock=false -no-color -detailed-exitcode -out=tfplan
+          rc=$?
+          set -e
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          # 0 = sin cambios, 2 = drift, otro = error real del plan
+          if [ "$rc" = "2" ]; then tofu show -no-color tfplan > plan.txt; fi
+          [ "$rc" = "0" ] || [ "$rc" = "2" ]
+
+      - name: abrir/actualizar issue de drift
+        if: steps.plan.outputs.rc == '2'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          LAYER: ${{ matrix.layer }}
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.readFileSync(`infra/${process.env.LAYER}/plan.txt`, 'utf8');
+            if (plan.length > 60000) plan = plan.slice(0, 60000) + '\n... (truncado, ver el run)';
+            const { owner, repo } = context.repo;
+            const title = `[drift] infra/${process.env.LAYER}`;
+            const run = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const body = `Drift detectado en \`infra/${process.env.LAYER}\` (${run}).\n\n<details><summary>Plan</summary>\n\n\`\`\`hcl\n${plan}\n\`\`\`\n\n</details>`;
+            const open = await github.paginate(github.rest.issues.listForRepo, { owner, repo, state: 'open', labels: 'drift' });
+            const existing = open.find(i => i.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
+            } else {
+              await github.rest.issues.create({ owner, repo, title, body, labels: ['drift'] });
+            }

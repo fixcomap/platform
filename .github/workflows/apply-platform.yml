@@ -1,0 +1,79 @@
+# Único workflow con permisos para crear IAM. Corre bajo el environment
+# "platform": required reviewers en GitHub y, en GCP, tf-platform solo acepta
+# tokens cuyo sub sea repo:fixcomap/platform:environment:platform desde main.
+name: apply-platform
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - infra/bootstrap/**
+      - infra/platform/**
+      - infra/dns/**
+      - .github/workflows/apply-platform.yml
+  workflow_dispatch:
+
+env:
+  STATE_BUCKET: fixcomap-core-tfstate
+  TF_PLATFORM_SA: tf-platform@fixcomap-core.iam.gserviceaccount.com
+  TOFU_VERSION: 1.12.6
+  TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
+
+permissions: {}
+
+# Un apply a la vez; nunca se cancela uno en curso.
+concurrency:
+  group: apply-platform
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: apply L0 + L1 + dns
+    runs-on: ubuntu-latest
+    environment: platform
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tofu_wrapper: false
+
+      - name: auth GCP (tf-platform)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.TF_PLATFORM_SA }}
+
+      # L0 antes que L1: L1 depende del pool de WIF y del bucket.
+      - name: apply L0 (bootstrap)
+        working-directory: infra/bootstrap
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=bootstrap"
+          tofu plan -input=false -no-color -out=tfplan
+          tofu show -no-color tfplan >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan
+
+      - name: apply L1 (platform)
+        working-directory: infra/platform
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=platform"
+          tofu plan -input=false -no-color -out=tfplan
+          tofu show -no-color tfplan >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan
+
+      # dns: la única credencial de larga duración (token de Cloudflare) es un secret
+      # del environment platform; ningún otro job del repo puede leerla.
+      - name: apply dns
+        working-directory: infra/dns
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=dns"
+          tofu plan -input=false -no-color -out=tfplan
+          tofu show -no-color tfplan >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan

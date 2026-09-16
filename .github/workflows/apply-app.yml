@@ -1,0 +1,111 @@
+# Build, escaneo, firma y despliegue de la app con gh-deployer. Sin permisos IAM:
+# si este workflow necesita tocar IAM, el cambio va a L1 y a apply-platform.yml.
+name: apply-app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/**
+      - infra/app/**
+      - VERSION
+      - .github/workflows/apply-app.yml
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: fixcomap-core
+  GCP_REGION: europe-west1
+  STATE_BUCKET: fixcomap-core-tfstate
+  GH_DEPLOYER_SA: gh-deployer@fixcomap-core.iam.gserviceaccount.com
+  IMAGE_REPO: europe-west1-docker.pkg.dev/fixcomap-core/docker/app
+  TOFU_VERSION: 1.12.6
+
+permissions: {}
+
+concurrency:
+  group: apply-app
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    name: build, sign, deploy L2
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # crear el tag vX.Y.Z
+      id-token: write   # OIDC para GCP y para la firma keyless de cosign
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: auth GCP (gh-deployer)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GH_DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: docker login (Artifact Registry)
+        run: gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
+
+      - name: versión
+        run: |
+          echo "VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+
+      - name: build
+        # --provenance=false: sin manifiestos de attestation, que en Artifact Registry
+        # aparecen como versiones sin tag y ocupan cuota.
+        run: |
+          docker build --provenance=false \
+            -t "$IMAGE_REPO:$SHORT_SHA" -t "$IMAGE_REPO:v$VERSION" app
+
+      - name: trivy image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_REPO }}:${{ env.SHORT_SHA }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: push
+        run: |
+          docker push "$IMAGE_REPO:$SHORT_SHA"
+          docker push "$IMAGE_REPO:v$VERSION"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_REPO:$SHORT_SHA")
+          echo "IMAGE_DIGEST=$DIGEST" >> "$GITHUB_ENV"
+          echo "imagen: $DIGEST" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: cosign sign (keyless)
+        # Firma por digest con la identidad OIDC del workflow; verificable con
+        # --certificate-identity-regexp y --certificate-oidc-issuer.
+        run: cosign sign --yes "$IMAGE_DIGEST"
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tofu_wrapper: false
+
+      - name: apply L2 (app)
+        working-directory: infra/app
+        env:
+          TF_VAR_image: ${{ env.IMAGE_DIGEST }}
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=app"
+          tofu plan -input=false -no-color -out=tfplan
+          tofu show -no-color tfplan >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan
+          echo "url: $(tofu output -raw service_url)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: tag vVERSION
+        # Solo si no existe: un hotfix que no toque VERSION no re-etiqueta.
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            echo "tag v$VERSION ya existe"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "v$VERSION"

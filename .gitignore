@@ -1,0 +1,18 @@
+# OpenTofu: estado, locks de proveedor, planes y config con valores reales fuera del repo
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/backend.hcl
+**/terraform.tfvars
+**/*.auto.tfvars
+crash.log
+
+# Herramientas
+.tflint.d/
+.checkov/
+trivy-*.json
+.DS_Store
+
+# Override local para planificar sin bucket (backend local)
+**/backend_override.tf

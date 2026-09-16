@@ -1,0 +1,203 @@
+# Checks de PR contra develop y main. Nada de aquí escribe en GCP: el plan corre
+# con tf-plan (roles/viewer) y -lock=false. Un PR malicioso no puede desplegar.
+name: pr-checks
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+env:
+  GCP_PROJECT_ID: fixcomap-core
+  GCP_REGION: europe-west1
+  STATE_BUCKET: fixcomap-core-tfstate
+  TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
+  TOFU_VERSION: 1.12.6
+  CLOUD_RUN_SERVICE: app
+
+permissions: {}
+
+jobs:
+  gitflow:
+    name: gitflow (rama origen)
+    runs-on: ubuntu-latest
+    steps:
+      # Los rulesets no pueden restringir la rama de origen; esto es lo que hace
+      # cumplir la convención: main solo recibe release/* y hotfix/*.
+      - env:
+          HEAD: ${{ github.head_ref }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          case "$BASE" in
+            main)    pat='^(release|hotfix)/' ;;
+            develop) pat='^(feature|bugfix|release|hotfix)/' ;;
+            *)       echo "rama base no contemplada: $BASE"; exit 1 ;;
+          esac
+          echo "$HEAD" | grep -Eq "$pat" || { echo "'$HEAD' no puede mergearse en '$BASE' (patrón: $pat)"; exit 1; }
+
+  app:
+    name: app (lint + test)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: app/go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: go vet
+        run: go vet ./...
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          working-directory: app
+      - name: go test
+        run: go test -race ./...
+
+  security:
+    name: gitleaks + trivy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # gitleaks git escanea el historial, no solo el árbol de trabajo
+          fetch-depth: 0
+      - name: gitleaks
+        # Binario directo en vez de gitleaks-action: la action pide licencia para organizaciones.
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 git --no-banner --redact --exit-code 1 .
+      - name: trivy fs (vuln + secret)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: trivy config (infra)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: infra
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  tofu:
+    name: tofu (${{ matrix.layer }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write       # token OIDC para tf-plan
+      pull-requests: write  # comentario con el plan
+    strategy:
+      fail-fast: false
+      matrix:
+        # dns no se planifica en PR: su token solo existe en el environment platform.
+        include:
+          - { layer: bootstrap, plan: true }
+          - { layer: platform, plan: true }
+          - { layer: app, plan: true }
+          - { layer: dns, plan: false }
+    defaults:
+      run:
+        working-directory: infra/${{ matrix.layer }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tofu_wrapper: false
+
+      - name: tofu fmt -check
+        run: tofu fmt -check -recursive -diff
+
+      - name: tofu validate
+        run: |
+          tofu init -backend=false -input=false
+          tofu validate
+
+      - uses: terraform-linters/setup-tflint@1cf010d3c7aef302051ccdb68c14c5dc2efa34ef # v6.3.1
+        with:
+          tflint_version: v0.60.0
+      - name: tflint
+        env:
+          # sin token, la descarga del ruleset google choca con el rate limit de GitHub
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tflint --init --config="$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --config="$GITHUB_WORKSPACE/.tflint.hcl" --format compact
+
+      - name: checkov
+        uses: bridgecrewio/checkov-action@99bb2caf247dfd9f03cf984373bc6043d4e32ebf # v12.1347.0
+        with:
+          directory: infra/${{ matrix.layer }}
+          framework: terraform
+          quiet: true
+          output_format: cli
+
+      # --- plan: solo para PRs del propio repo (los forks no reciben token OIDC) ---
+
+      - name: auth GCP (tf-plan)
+        if: matrix.plan && github.event.pull_request.head.repo.full_name == github.repository
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.TF_PLAN_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        if: matrix.layer == 'app' && github.event.pull_request.head.repo.full_name == github.repository
+
+      - name: imagen desplegada (L2)
+        # El plan de L2 necesita var.image. Se toma la del servicio en producción para
+        # que el plan refleje solo cambios de infra, no de imagen.
+        if: matrix.layer == 'app' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          IMAGE=$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
+            --format 'value(spec.template.spec.containers[0].image)' 2>/dev/null || true)
+          echo "TF_VAR_image=${IMAGE:-us-docker.pkg.dev/cloudrun/container/hello}" >> "$GITHUB_ENV"
+
+      - name: tofu plan
+        id: plan
+        if: matrix.plan && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
+        run: |
+          tofu init -input=false -reconfigure \
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="prefix=${{ matrix.layer }}"
+          # -lock=false: tf-plan solo tiene objectViewer y no puede crear el .tflock
+          tofu plan -input=false -lock=false -no-color -out=tfplan 2>&1 | tee plan.txt
+          tofu show -no-color tfplan > plan.txt
+
+      - name: comentar plan en el PR
+        if: always() && matrix.plan && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          LAYER: ${{ matrix.layer }}
+          OUTCOME: ${{ steps.plan.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = `infra/${process.env.LAYER}/plan.txt`;
+            let plan = fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '(sin salida)';
+            const max = 60000; // límite de un comentario: 65536
+            if (plan.length > max) plan = plan.slice(0, max) + '\n... (truncado, ver el job)';
+            const marker = `<!-- tofu-plan:${process.env.LAYER} -->`;
+            const body = `${marker}\n### tofu plan \`infra/${process.env.LAYER}\` — ${process.env.OUTCOME}\n\n<details><summary>Ver plan</summary>\n\n\`\`\`hcl\n${plan}\n\`\`\`\n\n</details>`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const prev = comments.find(c => c.body && c.body.startsWith(marker));
+            if (prev) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: prev.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
