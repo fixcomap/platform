@@ -8,3 +8,5 @@ github_repo  = "platform"
 wif_pool_id  = "github"
 cloud_run_service_name = "app"
 app_public             = false
+app_hostname           = "app.fixcomap.com"
+enable_domain_mapping  = false

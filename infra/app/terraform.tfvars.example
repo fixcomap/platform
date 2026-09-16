@@ -4,5 +4,3 @@ service_name          = "app"
 image                 = "europe-west1-docker.pkg.dev/fixcomap-core/docker/app@sha256:<digest>"
 app_runtime_email     = "app-runtime@fixcomap-core.iam.gserviceaccount.com"
 app_config_secret_id  = "app-config"
-app_hostname          = "app.fixcomap.com"
-enable_domain_mapping = false
