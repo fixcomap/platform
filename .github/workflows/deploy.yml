@@ -28,6 +28,12 @@ env:
 
 permissions: {}
 
+# bash explícito: activa pipefail, que el shell por defecto de Actions no lleva.
+# Sin él, un `tofu plan | tee` que falla termina en verde.
+defaults:
+  run:
+    shell: bash
+
 # Un despliegue a la vez, en orden de llegada; nunca se cancela uno en curso.
 concurrency:
   group: deploy-main

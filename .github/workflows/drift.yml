@@ -17,6 +17,12 @@ env:
 
 permissions: {}
 
+# bash explícito: activa pipefail, que el shell por defecto de Actions no lleva.
+# Sin él, un `tofu plan | tee` que falla termina en verde.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   plan:
     name: drift (${{ matrix.layer }})
@@ -33,6 +39,8 @@ jobs:
         layer: [bootstrap, platform, app]
     defaults:
       run:
+        # los defaults de job no heredan el shell del workflow: pipefail también aquí
+        shell: bash
         working-directory: infra/${{ matrix.layer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,10 +57,21 @@ jobs:
           service_account: ${{ env.TF_PLAN_SA }}
 
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-        if: matrix.layer == 'app'
+
+      - name: estado de la capa existe
+        # Una capa nunca aplicada no tiene estado y tf-plan no puede crearlo. No es
+        # drift: se avisa y se salta hasta que deploy.yml la aplique.
+        id: state
+        run: |
+          if gcloud storage objects describe "gs://$STATE_BUCKET/${{ matrix.layer }}/default.tfstate" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=capa sin estado::infra/${{ matrix.layer }} nunca se ha aplicado; drift omitido."
+          fi
 
       - name: imagen desplegada (L2)
-        if: matrix.layer == 'app'
+        if: matrix.layer == 'app' && steps.state.outputs.exists == 'true'
         run: |
           IMAGE=$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
             --format 'value(spec.template.spec.containers[0].image)' 2>/dev/null || true)
@@ -60,6 +79,7 @@ jobs:
 
       - name: tofu plan -detailed-exitcode
         id: plan
+        if: steps.state.outputs.exists == 'true'
         env:
           TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
         run: |
