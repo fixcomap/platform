@@ -17,6 +17,20 @@ resource "google_cloud_run_v2_service" "app" {
   template {
     service_account = var.app_runtime_email
 
+    # Secreto como volumen y no como env var: con version = "latest" Cloud Run
+    # resuelve los volúmenes al arrancar cada instancia, así que una versión
+    # nueva del secreto entra sola al escalar desde cero, sin redesplegar.
+    volumes {
+      name = "database-url"
+      secret {
+        secret = var.database_url_secret_id
+        items {
+          version = "latest"
+          path    = "database-url"
+        }
+      }
+    }
+
     # max 2: tope de gasto ante un pico o un bucle de reintentos.
     scaling {
       min_instance_count = 0
@@ -50,6 +64,16 @@ resource "google_cloud_run_v2_service" "app" {
             version = "latest"
           }
         }
+      }
+
+      env {
+        name  = "DATABASE_URL_FILE"
+        value = "/secrets/database-url"
+      }
+
+      volume_mounts {
+        name       = "database-url"
+        mount_path = "/secrets"
       }
 
       ports {

@@ -299,6 +299,24 @@ printf '%s' '<valor>' | gcloud secrets versions add app-config --project fixcoma
 
 Cloud Run monta `latest` en `APP_CONFIG`; hace falta un nuevo despliegue (o revisión) para que lo lea.
 
+## Base de datos (Neon)
+
+Postgres serverless en Neon (free tier). La cadena de conexión vive en Secret Manager (`database-url`,
+L1) y Cloud Run la monta como fichero en `/secrets/database-url` (volumen con `version = latest`: cada
+instancia nueva lee la versión actual; no hace falta redesplegar). `app-runtime` tiene
+`secretmanager.secretAccessor` solo sobre ese secreto. `/dbcheck` ejecuta `SELECT 1` y responde
+`db ok` / 503, sin exponer nunca la cadena.
+
+Subir o rotar el valor (cadena *pooled* de Neon, con `sslmode=require`), fuera del repo:
+
+```sh
+gcloud auth login
+printf '%s' 'postgresql://USER:PASS@HOST/neondb?sslmode=require' | \
+  gcloud secrets versions add database-url --project fixcomap-core --data-file=-
+```
+
+Las instancias en ejecución siguen con la versión anterior hasta que escalan a cero (segundos sin tráfico).
+
 ## Verificar la firma de una imagen
 
 ```sh

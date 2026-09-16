@@ -18,6 +18,11 @@ output "docker_repository" {
   value       = "${google_artifact_registry_repository.docker.location}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.docker.repository_id}"
 }
 
+output "database_url_secret_id" {
+  description = "Secreto con la cadena de conexión a Neon; L2 lo monta como volumen."
+  value       = google_secret_manager_secret.database_url.secret_id
+}
+
 output "app_config_secret_id" {
   description = "Nombre del secreto que L2 monta en Cloud Run."
   value       = google_secret_manager_secret.app_config.secret_id
