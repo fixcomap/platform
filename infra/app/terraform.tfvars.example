@@ -5,3 +5,5 @@ image                 = "europe-west1-docker.pkg.dev/fixcomap-core/docker/app@sh
 app_runtime_email     = "app-runtime@fixcomap-core.iam.gserviceaccount.com"
 app_config_secret_id  = "app-config"
 database_url_secret_id = "database-url"
+app_hostname           = "app.fixcomap.com"
+alert_email            = "billing@fixcomap.com"

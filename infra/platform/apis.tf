@@ -4,6 +4,7 @@ resource "google_project_service" "platform" {
     "artifactregistry.googleapis.com",
     "run.googleapis.com",
     "secretmanager.googleapis.com",
+    "monitoring.googleapis.com",
   ])
 
   service            = each.value

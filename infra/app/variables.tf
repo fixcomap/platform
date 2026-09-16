@@ -27,6 +27,18 @@ variable "app_runtime_email" {
   default     = "app-runtime@fixcomap-core.iam.gserviceaccount.com"
 }
 
+variable "app_hostname" {
+  description = "Hostname público que sondea el uptime check; el mapping vive en L1 y el CNAME en infra/dns."
+  type        = string
+  default     = "app.fixcomap.com"
+}
+
+variable "alert_email" {
+  description = "Destino de las alertas de disponibilidad. Cloud Monitoring no verifica emails; comprobar que llega la primera."
+  type        = string
+  default     = "billing@fixcomap.com"
+}
+
 variable "database_url_secret_id" {
   description = "Secreto de L1 con la cadena de conexión; montado como fichero en /secrets/database-url."
   type        = string
