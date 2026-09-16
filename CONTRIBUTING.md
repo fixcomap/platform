@@ -60,7 +60,8 @@ No se crean tags a mano.
 - `tofu (bootstrap|platform|app|dns)`: `fmt -check`, `validate`, `tflint`, `checkov`, y `tofu plan` con
   `tf-plan` (solo lectura, `-lock=false`), publicado como comentario en el PR (uno por capa, se actualiza
   en cada push). `dns` no tiene plan en PR (su token solo existe en el environment `platform`). Los PRs
-  desde forks no obtienen token OIDC: en ellos el plan se omite.
+  desde forks no obtienen token OIDC: en ellos el plan se omite. Si `tf-plan` aún no existe (arranque
+  en frío, antes del primer apply de L1) el job pasa con aviso y sin plan; ver README.
 - `cost-guard`: falla si `infra/` contiene tipos de recurso con coste fijo (Cloud SQL, LB, NAT, IPs,
   GKE, KMS…) sin la etiqueta `cost-approved` y una línea `Coste estimado: …` en el cuerpo del PR; y si
   Cloud Run deja de escalar a cero o de facturar por petición.
