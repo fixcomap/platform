@@ -1,0 +1,29 @@
+:root {
+  --bg: #fafaf9;
+  --fg: #1c1917;
+  --muted: #57534e;
+  --accent: #0f766e;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0c0a09; --fg: #fafaf9; --muted: #a8a29e; --accent: #2dd4bf; }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 52rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+header h1 { font-size: 2.5rem; margin: 0; letter-spacing: -0.02em; }
+.tagline { color: var(--muted); margin: 0.25rem 0 2.5rem; }
+.people { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 2rem; }
+.people article { text-align: center; }
+.people img { width: 10rem; height: 10rem; border-radius: 50%; object-fit: cover; background: #d6d3d1; }
+.people h2 { font-size: 1.25rem; margin: 1rem 0 0.25rem; }
+.people p { margin: 0 0 0.5rem; color: var(--muted); }
+.about { margin-top: 3rem; }
+.about h2 { font-size: 1.25rem; }
+a { color: var(--accent); }
+footer { margin-top: 3rem; color: var(--muted); border-top: 1px solid rgba(128,128,128,0.3); padding-top: 1.5rem; }

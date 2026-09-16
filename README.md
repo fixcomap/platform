@@ -10,13 +10,13 @@ y desplegada íntegramente por GitHub Actions mediante Workload Identity Federat
 | L0 | `infra/bootstrap/` | Persona (Cloud Shell) la primera vez; después `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | Bucket de estado, APIs mínimas, WIF pool + provider, SA `tf-platform` |
 | L1 | `infra/platform/` | `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `app-runtime` / `tf-plan`, IAM (incl. `run.invoker` público), domain mapping, Secret Manager |
 | L2 | `infra/app/` | `gh-deployer` | `deploy.yml` → `app`, automático en `main` | Cloud Run (solo el servicio) |
-| dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | CNAME `app.fixcomap.com` |
+| dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | CNAME `app.fixcomap.com`, Pages (landing) y CNAME de `fixcomap.com`/`www` |
 
 Estado: bucket `fixcomap-core-tfstate` (prefijos `bootstrap/`, `platform/`, `dns/`) y bucket propio
 `fixcomap-core-tfstate-app` para L2. Separados porque `gh-deployer` necesita `storage.objects.list` en
 `init` y las condiciones IAM por prefijo no lo autorizan; el aislamiento del estado es por bucket.
 
-`www.fixcomap.com` y el apex quedan libres para la landing.
+`www.fixcomap.com` y el apex sirven la landing (`web/`) desde Cloudflare Pages.
 
 ### Identidades y condiciones OIDC
 
@@ -36,7 +36,8 @@ porque un binding `principalSet://` solo puede filtrar por un atributo. Ver `inf
 Cloudflare no acepta tokens OIDC de GitHub, así que el CNAME de `app.fixcomap.com` necesita un token
 de API. Es la única excepción a "cero credenciales largas" y se acota así:
 
-- Permiso `Zone > DNS > Edit` limitado a la zona `fixcomap.com`. Nada más.
+- Permisos: `Zone > DNS > Edit` limitado a la zona `fixcomap.com` y `Account > Cloudflare Pages > Edit`
+  (para el proyecto de la landing y sus dominios). Nada más.
 - Guardado como **secret del environment `platform`**, no del repositorio: solo un job con
   `environment: platform`, es decir aprobado por una persona, puede leerlo. Ni los PRs ni `drift.yml`
   ni el job `app` lo ven.
@@ -225,9 +226,11 @@ gh api -X PUT repos/$R/environments/platform --input - <<JSON
   "deployment_branch_policy": { "protected_branches": true, "custom_branch_policies": false } }
 JSON
 
-# Cloudflare: token (Zone > DNS > Edit, solo fixcomap.com) y zone id, SOLO en el environment
-gh secret   set CLOUDFLARE_API_TOKEN -R $R --env platform   # pide el valor por stdin
-gh secret   set CLOUDFLARE_ZONE_ID   -R $R --env platform   # secret, no variable: GitHub imprime las vars en los logs
+# Cloudflare: token (Zone > DNS > Edit en fixcomap.com + Account > Cloudflare Pages > Edit), zone id y
+# account id, SOLO en el environment. Secrets, no variables: GitHub imprime las vars en los logs.
+gh secret   set CLOUDFLARE_API_TOKEN   -R $R --env platform   # pide el valor por stdin
+gh secret   set CLOUDFLARE_ZONE_ID     -R $R --env platform
+gh secret   set CLOUDFLARE_ACCOUNT_ID  -R $R --env platform
 ```
 
 Renovate: instalar la GitHub App de Mend Renovate en la organización con acceso a `fixcomap/platform`.
@@ -316,6 +319,18 @@ printf '%s' 'postgresql://USER:PASS@HOST/neondb?sslmode=require' | \
 ```
 
 Las instancias en ejecución siguen con la versión anterior hasta que escalan a cero (segundos sin tráfico).
+
+## Landing (`web/`)
+
+HTML/CSS estático en `web/`, servido por Cloudflare Pages en `fixcomap.com` y `www.fixcomap.com`
+(`infra/dns/pages.tf`). Sin build ni credenciales en Actions: la GitHub App de Cloudflare hace pull del
+repo y publica en cada push a `main` que toque `web/`; `develop` genera una preview en
+`*.fixcomap-landing.pages.dev`. Free tier: 500 builds/mes, tráfico ilimitado. `web/_headers` fija CSP
+estricta (sin JS). Fotos y CVs en `web/assets/` con los nombres de `web/assets/README.md`.
+
+Manual, una vez: instalar la GitHub App "Cloudflare Workers and Pages" en la org con acceso a `platform`
+(Cloudflare → Workers & Pages → Create → Pages → Connect to Git; basta con autorizar, sin crear el
+proyecto), y crear `hola@fixcomap.com` en Email Routing.
 
 ## Disponibilidad
 

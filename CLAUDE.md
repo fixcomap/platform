@@ -8,7 +8,7 @@ El producto aún no está definido.
 - GCP: proyecto `fixcomap-core`, región `europe-west1`. Free Trial ($300) hasta el 16/12/2026.
 - GitHub: org `fixcomap`, repo `fixcomap/platform`, **privado**, org en plan Free: 2.000 min/mes de Actions;
   sin rulesets ni required reviewers hasta pasar a Team o hacerlo público. Minimizar runs: agrupar cambios.
-- Dominio `fixcomap.com`, DNS en Cloudflare. Hostname de la app: `app.fixcomap.com` (`www` y el apex quedan libres para la landing).
+- Dominio `fixcomap.com`, DNS en Cloudflare. App en `app.fixcomap.com`; landing estática (`web/`) en Cloudflare Pages en el apex y `www`.
 - IaC: OpenTofu (`tofu`, nunca `terraform`). Provider google `~> 8.3`, cloudflare `~> 5.25`.
 
 ## Reglas no negociables
