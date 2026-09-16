@@ -19,6 +19,7 @@ resource "google_project_iam_member" "tf_platform" {
     "roles/artifactregistry.admin",          # repositorio Docker y su IAM
     "roles/secretmanager.admin",             # secretos y su IAM (nunca lee versiones: eso es secretAccessor)
     "roles/storage.admin",                   # crear los buckets de estado y fijar sus bindings; en el proyecto solo hay buckets de estado
+    "roles/run.admin",                       # IAM del servicio Cloud Run (run.invoker a allUsers); gh-deployer solo es run.developer
   ])
 
   project = var.project_id
