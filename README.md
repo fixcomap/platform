@@ -7,10 +7,10 @@ y desplegada íntegramente por GitHub Actions mediante Workload Identity Federat
 
 | Capa | Directorio | Identidad que aplica | Cuándo | Contiene |
 |---|---|---|---|---|
-| L0 | `infra/bootstrap/` | Persona (Cloud Shell) la primera vez; después `tf-platform` | `apply-platform.yml`, con aprobación | Bucket de estado, APIs mínimas, WIF pool + provider, SA `tf-platform` |
-| L1 | `infra/platform/` | `tf-platform` | `apply-platform.yml`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `app-runtime` / `tf-plan`, IAM, Secret Manager |
-| L2 | `infra/app/` | `gh-deployer` | `apply-app.yml`, automático en `main` | Cloud Run, domain mapping |
-| dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `apply-platform.yml`, con aprobación | CNAME `app.fixcomap.com` |
+| L0 | `infra/bootstrap/` | Persona (Cloud Shell) la primera vez; después `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | Bucket de estado, APIs mínimas, WIF pool + provider, SA `tf-platform` |
+| L1 | `infra/platform/` | `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `app-runtime` / `tf-plan`, IAM, Secret Manager |
+| L2 | `infra/app/` | `gh-deployer` | `deploy.yml` → `app`, automático en `main` | Cloud Run, domain mapping |
+| dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | CNAME `app.fixcomap.com` |
 
 Estado: bucket `fixcomap-core-tfstate`, prefijos `bootstrap/`, `platform/`, `app/`, `dns/`.
 
@@ -37,11 +37,28 @@ de API. Es la única excepción a "cero credenciales largas" y se acota así:
 - Permiso `Zone > DNS > Edit` limitado a la zona `fixcomap.com`. Nada más.
 - Guardado como **secret del environment `platform`**, no del repositorio: solo un job con
   `environment: platform`, es decir aprobado por una persona, puede leerlo. Ni los PRs ni `drift.yml`
-  ni `apply-app.yml` lo ven.
-- Consecuencia: `infra/dns/` se aplica desde `apply-platform.yml` (no desde `apply-app.yml`), no tiene
+  ni el job `app` lo ven.
+- Consecuencia: `infra/dns/` se aplica en el job `platform-apply` (no en `app`), no tiene
   plan en PR ni detección de drift nocturna. Cloudflare conserva su propio audit log.
 - Rotación: crear token nuevo en Cloudflare, `gh secret set CLOUDFLARE_API_TOKEN --env platform`,
   revocar el viejo.
+
+### Formato del `sub` OIDC de GitHub (repos posteriores al 15/07/2026)
+
+Este repo se creó el 16/09/2026, así que GitHub emite el `sub` en su formato "inmutable":
+`repo:fixcomap@329960363/platform@1372908880:environment:platform` (nombre `@` ID), en vez de
+`repo:fixcomap/platform:environment:platform`. Los claims `repository`, `ref` y `repository_owner`
+siguen siendo por nombre. Consecuencias en `infra/bootstrap/wif.tf`:
+
+- Ningún binding usa `assertion.sub` literal. El environment se extrae del `sub` con `contains`/`split`
+  (funciona con ambos formatos: los dos terminan en `:environment:NOMBRE`).
+- `attribute_condition` exige nombre **e** ID de la organización (`repository_owner_id`), que no se recicla.
+- Atributos mapeados: `repository` (tf-plan), `repository_ref` = `repo:ref` (gh-deployer),
+  `repo_ref_env` = `repo:ref:environment:NOMBRE` (tf-platform). Separador `:`.
+
+Si `platform-apply` falla con `IAM_PERMISSION_DENIED` en `iam.serviceAccounts.getAccessToken` y la SA
+existe, el token pasó STS (condición del provider) pero ningún `principalSet` coincide: comparar el `sub`
+real con el atributo mapeado antes de tocar nada.
 
 ## Por qué L0 es irreducible
 
@@ -55,6 +72,13 @@ persona (sin ficheros de credenciales en disco), deja rastro en Cloud Audit Logs
 haya instalado cada uno. Tras el primer apply, el estado se migra al bucket y L0 pasa a gestionarse por
 pipeline con `tf-platform` como cualquier otra capa. Nadie vuelve a aplicar desde una consola.
 
+### Cuándo L0 vuelve a Cloud Shell
+
+Solo cuando L0 rompe la identidad del propio pipeline: si `tf-platform` no puede autenticarse (binding o
+mapping de WIF incorrectos), ningún job puede aplicar la corrección. Es el único caso en que se repite el
+procedimiento de Cloud Shell, esta vez contra el estado ya migrado al bucket (sin `-backend=false`, sin
+`-migrate-state`). Ver "L0 desde Cloud Shell (estado ya en el bucket)".
+
 ## Por qué el apply de L1 lleva aprobación humana
 
 `tf-platform` tiene `resourcemanager.projectIamAdmin` y `iam.serviceAccountAdmin`: puede concederse a
@@ -63,7 +87,11 @@ sí misma, o a cualquier otra identidad, cualquier rol del proyecto. Es Owner de
 y eso no lo decide un merge automático. El environment `platform` de GitHub exige que otra persona
 apruebe la ejecución, y la condición OIDC de `tf-platform` hace que ese environment sea la única vía
 para obtener su token: un workflow sin `environment: platform` no consigue credenciales aunque lo
-intente. `gh-deployer` no tiene ningún permiso IAM, así que `apply-app.yml` puede ser automático.
+intente. `gh-deployer` no tiene ningún permiso IAM, así que el job `app` puede ser automático.
+
+La aprobación se pide **solo cuando hace falta**: `platform-plan` (solo lectura) detecta antes si hay
+cambios en L0/L1, si `tf-plan` aún no existe o si cambió `infra/dns/`; si no, `platform-apply` se salta.
+El revisor aprueba con el plan ya publicado en el step summary.
 
 ## Primera puesta en marcha (una sola vez)
 
@@ -142,6 +170,27 @@ y `tofu apply tfplan`: el estado local ya recoge lo creado. Si algo falla en el 
 responder `yes`, el estado está en `gs://fixcomap-core-tfstate/bootstrap/default.tfstate` y el local es
 una copia: no repetir el apply.
 
+### 2b. L0 desde Cloud Shell (estado ya en el bucket)
+
+Para corregir L0 cuando el pipeline no puede (ver "Cuándo L0 vuelve a Cloud Shell"):
+
+```sh
+gcloud config set project fixcomap-core
+export PATH="$HOME/bin:$PATH"; tofu version || echo "instalar tofu: paso 2"
+
+rm -rf "$HOME/platform"
+git clone --branch main https://github.com/fixcomap/platform.git "$HOME/platform"
+cd "$HOME/platform/infra/bootstrap"
+
+cp backend.hcl.example backend.hcl
+tofu init -input=false -backend-config=backend.hcl
+tofu plan -out=tfplan        # revisar: solo lo que corrige el problema
+tofu apply tfplan
+
+tofu plan                    # "No changes."
+cd "$HOME" && rm -rf "$HOME/platform"
+```
+
 ### 3. Configurar GitHub
 
 Con `gh` autenticado como admin de la organización:
@@ -180,14 +229,13 @@ puede planificar: la federación OIDC funciona, pero suplantar `tf-plan` devuelv
 Secuencia:
 
 1. L0 desde Cloud Shell y variables de GitHub (pasos 2 y 3).
-2. Primer PR `release/*` → `main`: checks verdes **sin plan**. Se mergea y se aprueba `apply-platform.yml`
-   (crea L1 y con ella `tf-plan`).
+2. Primer PR `release/*` → `main`: checks verdes **sin plan**. Al mergear, `deploy.yml` detecta el arranque
+   en frío en `platform-plan`, pide aprobación en `platform-apply` y aplica L0 y L1 (crea `tf-plan`).
 3. Desde ese momento todos los PRs planifican. Si vuelve a aparecer el aviso, es que `tf-plan` ha
    desaparecido: `drift.yml` y `cost-guard.yml` fallan a diario en ese caso, no lo silencian.
 
-Mergear en `main` (vía `release/*`) con `infra/` presente. `apply-platform.yml` queda esperando
-aprobación en el environment `platform`; al aprobar, aplica L0 (sin cambios), L1 y `dns`. Después
-`apply-app.yml` construye, firma y despliega la app y aplica L2.
+Mergear en `main` (vía `release/*`). `deploy.yml`: `platform-plan` → `platform-apply` (aprobación en el
+environment `platform`; aplica L0 sin cambios, L1 y `dns`) → `app` (build, firma, L2). Ver CONTRIBUTING.
 
 ### 5. Dominio `app.fixcomap.com`
 
@@ -229,7 +277,7 @@ Cloud Run monta `latest` en `APP_CONFIG`; hace falta un nuevo despliegue (o revi
 
 ```sh
 cosign verify \
-  --certificate-identity-regexp '^https://github.com/fixcomap/platform/\.github/workflows/apply-app\.yml@refs/heads/main$' \
+  --certificate-identity-regexp '^https://github.com/fixcomap/platform/\.github/workflows/deploy\.yml@refs/heads/main$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   europe-west1-docker.pkg.dev/fixcomap-core/docker/app@sha256:<digest>
 ```
