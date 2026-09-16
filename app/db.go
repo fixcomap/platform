@@ -47,7 +47,11 @@ func dbcheck(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "db error", http.StatusServiceUnavailable)
 		return
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("dbcheck: close: %v", err)
+		}
+	}()
 
 	var one int
 	if err := db.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil || one != 1 {
