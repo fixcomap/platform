@@ -2,7 +2,8 @@
 # Artifact Registry son 0.5 GB y trivy tiene menos superficie que escanear.
 FROM golang:1.27-alpine AS build
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+RUN go mod download
 COPY *.go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/app .
 

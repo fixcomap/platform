@@ -33,6 +33,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handler)
 	mux.HandleFunc("/healthz", healthz)
+	mux.HandleFunc("/dbcheck", dbcheck)
 	log.Printf("listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
 }
