@@ -1,37 +1,22 @@
-# Landing estática en Cloudflare Pages (free tier: 500 builds/mes, ancho de banda
-# ilimitado). Fuente: este repo vía la GitHub App de Cloudflare, sin credenciales
-# en Actions: Cloudflare hace pull y publica en cada push a main. Sin build:
-# sirve web/ tal cual.
+# Landing estática en Cloudflare Pages (free tier: 500 despliegues/mes, ancho de
+# banda ilimitado). Proyecto de "direct upload": sin source de Git. Publica el
+# pipeline de fixcomap/web (wrangler pages deploy) con un token acotado a Pages,
+# así el despliegue pasa por sus checks y queda registrado en Actions, y puede
+# crecer (build, firma) sin cambiar de modelo. Aquí solo el proyecto, sus
+# dominios y el DNS.
 resource "cloudflare_pages_project" "landing" {
   account_id        = var.cloudflare_account_id
   name              = "fixcomap-landing"
   production_branch = "main"
+}
 
-  source = {
-    type = "github"
-    config = {
-      owner             = "fixcomap"
-      repo_name         = "platform"
-      production_branch = "main"
-      # Solo develop genera previews (fixcomap-landing-<hash>.pages.dev); las
-      # ramas feature/* y las de Renovate no, para no gastar builds.
-      preview_deployment_setting     = "custom"
-      preview_branch_includes        = ["develop"]
-      preview_branch_excludes        = []
-      production_deployments_enabled = true
-      pr_comments_enabled            = false
-      # Solo cambios en web/ disparan despliegues.
-      path_includes = ["web/*"]
-      path_excludes = []
-    }
-  }
-
-  build_config = {
-    build_command   = ""
-    destination_dir = "web"
-    root_dir        = ""
-    build_caching   = false
-  }
+# El proyecto lo crea wrangler (deploy.yml de fixcomap/web, idempotente) y aquí
+# se importa al estado; si ya está en el estado, el bloque se ignora. Motivo:
+# crearlo desde el provider con source = github exige la GitHub App de Cloudflare
+# (error 8000011), que no queremos: publica el pipeline, no Cloudflare.
+import {
+  to = cloudflare_pages_project.landing
+  id = "${var.cloudflare_account_id}/fixcomap-landing"
 }
 
 # Dominios del proyecto. Pages emite el certificado (Google Trust Services) al
