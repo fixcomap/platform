@@ -22,6 +22,23 @@ variable "state_bucket_app" {
   default     = "fixcomap-core-tfstate-app"
 }
 
+variable "cloud_run_service_name" {
+  description = "Nombre del servicio Cloud Run creado en L2; aquí solo se le concede el invoker."
+  type        = string
+  default     = "app"
+}
+
+variable "app_public" {
+  description = <<-EOT
+    Concede run.invoker a allUsers sobre el servicio. Es IAM, por eso vive en L1 y no
+    en L2. Debe ser false hasta que L2 haya creado el servicio (deploy.yml aplica L1
+    antes que L2): en un arranque desde cero, primer deploy con false y un PR que lo
+    ponga a true después.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "github_org" {
   type    = string
   default = "fixcomap"

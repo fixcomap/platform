@@ -6,3 +6,5 @@ state_bucket_app = "fixcomap-core-tfstate-app"
 github_org   = "fixcomap"
 github_repo  = "platform"
 wif_pool_id  = "github"
+cloud_run_service_name = "app"
+app_public             = false
