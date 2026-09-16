@@ -13,6 +13,11 @@ output "tf_platform_email" {
   value       = google_service_account.tf_platform.email
 }
 
+output "state_bucket_app" {
+  description = "Bucket de estado de L2; -backend-config=bucket=... en infra/app."
+  value       = google_storage_bucket.tfstate_app.name
+}
+
 output "state_bucket" {
   description = "Bucket de estado; -backend-config=bucket=... en todas las capas."
   value       = google_storage_bucket.tfstate.name

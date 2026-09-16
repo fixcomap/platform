@@ -10,6 +10,7 @@ env:
   GCP_PROJECT_ID: fixcomap-core
   GCP_REGION: europe-west1
   STATE_BUCKET: fixcomap-core-tfstate
+  STATE_BUCKET_APP: fixcomap-core-tfstate-app # estado de L2, bucket propio de gh-deployer
   TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
   TOFU_VERSION: 1.12.6
   CLOUD_RUN_SERVICE: app
@@ -108,10 +109,10 @@ jobs:
       matrix:
         # dns no se planifica en PR: su token solo existe en el environment platform.
         include:
-          - { layer: bootstrap, plan: true }
-          - { layer: platform, plan: true }
-          - { layer: app, plan: true }
-          - { layer: dns, plan: false }
+          - { layer: bootstrap, plan: true, bucket: fixcomap-core-tfstate }
+          - { layer: platform, plan: true, bucket: fixcomap-core-tfstate }
+          - { layer: app, plan: true, bucket: fixcomap-core-tfstate-app }
+          - { layer: dns, plan: false, bucket: fixcomap-core-tfstate }
     defaults:
       run:
         # los defaults de job no heredan el shell del workflow: pipefail también aquí
@@ -202,12 +203,12 @@ jobs:
         id: state
         if: steps.sa.outputs.exists == 'true'
         run: |
-          if gcloud storage objects describe "gs://$STATE_BUCKET/${{ matrix.layer }}/default.tfstate" >/dev/null 2>&1; then
+          if gcloud storage objects describe "gs://${{ matrix.bucket }}/${{ matrix.layer }}/default.tfstate" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
             echo "::warning title=plan omitido (capa sin estado)::infra/${{ matrix.layer }} no se ha aplicado nunca; no hay estado que planificar. Lo crea deploy.yml."
-            echo "## :warning: plan omitido: \`infra/${{ matrix.layer }}\` aún no tiene estado en \`gs://$STATE_BUCKET/${{ matrix.layer }}/\`. Lo crea \`deploy.yml\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "## :warning: plan omitido: \`infra/${{ matrix.layer }}\` aún no tiene estado en \`gs://${{ matrix.bucket }}/${{ matrix.layer }}/\`. Lo crea \`deploy.yml\`." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: imagen desplegada (L2)
@@ -226,7 +227,7 @@ jobs:
           TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
         run: |
           tofu init -input=false -reconfigure \
-            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="bucket=${{ matrix.bucket }}" \
             -backend-config="prefix=${{ matrix.layer }}"
           # -lock=false: tf-plan solo tiene objectViewer y no puede crear el .tflock
           tofu plan -input=false -lock=false -no-color -out=tfplan 2>&1 | tee plan.txt

@@ -19,6 +19,7 @@ env:
   GCP_PROJECT_ID: fixcomap-core
   GCP_REGION: europe-west1
   STATE_BUCKET: fixcomap-core-tfstate
+  STATE_BUCKET_APP: fixcomap-core-tfstate-app # estado de L2, bucket propio de gh-deployer
   TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
   TF_PLATFORM_SA: tf-platform@fixcomap-core.iam.gserviceaccount.com
   GH_DEPLOYER_SA: gh-deployer@fixcomap-core.iam.gserviceaccount.com
@@ -273,7 +274,7 @@ jobs:
         env:
           TF_VAR_image: ${{ env.IMAGE_DIGEST }}
         run: |
-          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=app"
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=app"
           tofu plan -input=false -no-color -out=tfplan
           { echo "## apply infra/app"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           tofu apply -input=false tfplan

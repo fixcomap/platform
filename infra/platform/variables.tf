@@ -16,6 +16,12 @@ variable "state_bucket" {
   default     = "fixcomap-core-tfstate"
 }
 
+variable "state_bucket_app" {
+  description = "Bucket de estado de L2 creado en L0. gh-deployer solo toca este."
+  type        = string
+  default     = "fixcomap-core-tfstate-app"
+}
+
 variable "github_org" {
   type    = string
   default = "fixcomap"

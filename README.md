@@ -12,7 +12,9 @@ y desplegada íntegramente por GitHub Actions mediante Workload Identity Federat
 | L2 | `infra/app/` | `gh-deployer` | `deploy.yml` → `app`, automático en `main` | Cloud Run, domain mapping |
 | dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | CNAME `app.fixcomap.com` |
 
-Estado: bucket `fixcomap-core-tfstate`, prefijos `bootstrap/`, `platform/`, `app/`, `dns/`.
+Estado: bucket `fixcomap-core-tfstate` (prefijos `bootstrap/`, `platform/`, `dns/`) y bucket propio
+`fixcomap-core-tfstate-app` para L2. Separados porque `gh-deployer` necesita `storage.objects.list` en
+`init` y las condiciones IAM por prefijo no lo autorizan; el aislamiento del estado es por bucket.
 
 `www.fixcomap.com` y el apex quedan libres para la landing.
 
@@ -20,8 +22,8 @@ Estado: bucket `fixcomap-core-tfstate`, prefijos `bootstrap/`, `platform/`, `app
 
 | SA | Puede | Token OIDC aceptado |
 |---|---|---|
-| `tf-platform` | Crear IAM, SAs, APIs, AR, secretos, estado de todas las capas | `repository == fixcomap/platform` **y** `ref == refs/heads/main` **y** `environment == platform` |
-| `gh-deployer` | Push a AR, `run.developer`, actAs `app-runtime`, estado solo `app/` | `repository == fixcomap/platform` **y** `ref == refs/heads/main` |
+| `tf-platform` | Crear IAM, SAs, APIs, AR, secretos, buckets de estado (`storage.admin` de proyecto) | `repository == fixcomap/platform` **y** `ref == refs/heads/main` **y** `environment == platform` |
+| `gh-deployer` | Push a AR, `run.developer`, actAs `app-runtime`, estado solo en `fixcomap-core-tfstate-app` | `repository == fixcomap/platform` **y** `ref == refs/heads/main` |
 | `tf-plan` | `roles/viewer`, leer estado de todas las capas | `repository == fixcomap/platform`, cualquier rama |
 | `app-runtime` | Leer el secreto `app-config` | No la suplanta nadie; es la identidad del contenedor |
 
@@ -80,6 +82,11 @@ procedimiento de Cloud Shell, esta vez contra el estado ya migrado al bucket (si
 `-migrate-state`). Ver "L0 desde Cloud Shell (estado ya en el bucket)".
 
 ## Por qué el apply de L1 lleva aprobación humana
+
+**Limitación actual**: el repo es privado y la organización está en plan Free; GitHub no ofrece ahí ni
+required reviewers en environments ni rulesets. La aprobación humana y la protección de ramas descritas
+abajo solo se activan con GitHub Team o haciendo el repo público. Hasta entonces `platform-apply` corre
+sin aprobación y `main` admite push directo. Decisión pendiente.
 
 `tf-platform` tiene `resourcemanager.projectIamAdmin` y `iam.serviceAccountAdmin`: puede concederse a
 sí misma, o a cualquier otra identidad, cualquier rol del proyecto. Es Owner de facto. Un PR mergeado en
@@ -265,7 +272,7 @@ Todo lo que crea este repo está en free tier con la carga actual (cero tráfico
 | Cloud Run (1 vCPU, 256 Mi, cpu_idle, max 2) | 2M req, 360k GB-s, 180k vCPU-s/mes | Por uso |
 | Artifact Registry | 0.5 GB | $0.10/GB/mes; cleanup policies lo contienen |
 | Secret Manager | 6 versiones activas, 10k accesos/mes | $0.06/versión/mes |
-| GCS `fixcomap-core-tfstate` | Free tier solo en US; aquí en `europe-west1` | ~$0.02/GB/mes (KB de estado) |
+| GCS `fixcomap-core-tfstate` y `-app` | Free tier solo en US; aquí en `europe-west1` | ~$0.02/GB/mes (KB de estado) |
 | WIF, IAM, Cloud Run domain mapping, cert gestionado, Cloudflare DNS | Gratis | — |
 
 Deliberadamente no hay: Cloud SQL, load balancer, NAT, IPs estáticas, GKE, KMS (CMEK), Artifact

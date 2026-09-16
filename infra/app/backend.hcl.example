@@ -1,2 +1,2 @@
-bucket = "fixcomap-core-tfstate"
+bucket = "fixcomap-core-tfstate-app"
 prefix = "app"
