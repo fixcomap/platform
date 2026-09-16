@@ -14,7 +14,10 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	_, _ = fmt.Fprintf(w, "fixcomap platform %s\n", os.Getenv("APP_VERSION"))
+	if _, err := fmt.Fprintf(w, "fixcomap platform %s\n", os.Getenv("APP_VERSION")); err != nil {
+		// La cabecera ya salió: no se puede cambiar el status; queda constancia en el log.
+		log.Printf("write response: %v", err)
+	}
 }
 
 func healthz(w http.ResponseWriter, _ *http.Request) {
