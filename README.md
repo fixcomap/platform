@@ -93,6 +93,11 @@ La aprobación se pide **solo cuando hace falta**: `platform-plan` (solo lectura
 cambios en L0/L1, si `tf-plan` aún no existe o si cambió `infra/dns/`; si no, `platform-apply` se salta.
 El revisor aprueba con el plan ya publicado en el step summary.
 
+Si `platform-plan` **no puede** planificar (a `tf-plan` le falta un permiso que justo corrige L1, por
+ejemplo), el push queda en rojo y el escape es `gh workflow run deploy.yml --ref main`: en
+`workflow_dispatch` se omite el plan previo y `platform-apply` planifica con `tf-platform` y espera
+aprobación como siempre.
+
 ## Primera puesta en marcha (una sola vez)
 
 ### 1. Prerrequisitos fuera de este repo
