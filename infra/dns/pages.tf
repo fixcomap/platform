@@ -1,7 +1,8 @@
 # Landing estática en Cloudflare Pages (free tier: 500 builds/mes, ancho de banda
-# ilimitado). Fuente: este repo vía la GitHub App de Cloudflare, sin credenciales
-# en Actions: Cloudflare hace pull y publica en cada push a main. Sin build:
-# sirve web/ tal cual.
+# ilimitado). Fuente: el repo fixcomap/web vía la GitHub App de Cloudflare, sin
+# credenciales en Actions: Cloudflare hace pull y publica en cada push a main.
+# Sin build: sirve public/ tal cual. El contenido vive en su repo porque es
+# contenido, no plataforma; aquí solo el proyecto, sus dominios y el DNS.
 resource "cloudflare_pages_project" "landing" {
   account_id        = var.cloudflare_account_id
   name              = "fixcomap-landing"
@@ -11,24 +12,23 @@ resource "cloudflare_pages_project" "landing" {
     type = "github"
     config = {
       owner             = "fixcomap"
-      repo_name         = "platform"
+      repo_name         = "web"
       production_branch = "main"
-      # Solo develop genera previews (fixcomap-landing-<hash>.pages.dev); las
+      # Solo develop genera previews (<hash>.fixcomap-landing.pages.dev); las
       # ramas feature/* y las de Renovate no, para no gastar builds.
       preview_deployment_setting     = "custom"
       preview_branch_includes        = ["develop"]
       preview_branch_excludes        = []
       production_deployments_enabled = true
       pr_comments_enabled            = false
-      # Solo cambios en web/ disparan despliegues.
-      path_includes = ["web/*"]
-      path_excludes = []
+      path_includes                  = ["*"]
+      path_excludes                  = []
     }
   }
 
   build_config = {
     build_command   = ""
-    destination_dir = "web"
+    destination_dir = "public"
     root_dir        = ""
     build_caching   = false
   }

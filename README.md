@@ -16,7 +16,7 @@ Estado: bucket `fixcomap-core-tfstate` (prefijos `bootstrap/`, `platform/`, `dns
 `fixcomap-core-tfstate-app` para L2. Separados porque `gh-deployer` necesita `storage.objects.list` en
 `init` y las condiciones IAM por prefijo no lo autorizan; el aislamiento del estado es por bucket.
 
-`www.fixcomap.com` y el apex sirven la landing (`web/`) desde Cloudflare Pages.
+`www.fixcomap.com` y el apex sirven la landing (repo `fixcomap/web`) desde Cloudflare Pages.
 
 ### Identidades y condiciones OIDC
 
@@ -320,15 +320,15 @@ printf '%s' 'postgresql://USER:PASS@HOST/neondb?sslmode=require' | \
 
 Las instancias en ejecución siguen con la versión anterior hasta que escalan a cero (segundos sin tráfico).
 
-## Landing (`web/`)
+## Landing (`fixcomap/web`)
 
-HTML/CSS estático en `web/`, servido por Cloudflare Pages en `fixcomap.com` y `www.fixcomap.com`
-(`infra/dns/pages.tf`). Sin build ni credenciales en Actions: la GitHub App de Cloudflare hace pull del
-repo y publica en cada push a `main` que toque `web/`; `develop` genera una preview en
-`*.fixcomap-landing.pages.dev`. Free tier: 500 builds/mes, tráfico ilimitado. `web/_headers` fija CSP
-estricta (sin JS). Fotos y CVs en `web/assets/` con los nombres de `web/assets/README.md`.
+El contenido de `fixcomap.com` / `www` vive en [`fixcomap/web`](https://github.com/fixcomap/web)
+(HTML/CSS estático, mismos rulesets y checks que aquí). Este repo solo tiene el proyecto de Cloudflare
+Pages, sus dominios y el DNS (`infra/dns/pages.tf`). Pages hace pull de `fixcomap/web` con su GitHub App:
+`main` → producción, `develop` → preview en `*.fixcomap-landing.pages.dev`. Sin credenciales en Actions.
+Free tier: 500 builds/mes, tráfico ilimitado.
 
-Manual, una vez: instalar la GitHub App "Cloudflare Workers and Pages" en la org con acceso a `platform`
+Manual, una vez: instalar la GitHub App "Cloudflare Workers and Pages" en la org con acceso a `web`
 (Cloudflare → Workers & Pages → Create → Pages → Connect to Git; basta con autorizar, sin crear el
 proyecto), y crear `hola@fixcomap.com` en Email Routing.
 
