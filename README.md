@@ -220,3 +220,7 @@ cosign verify \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   europe-west1-docker.pkg.dev/fixcomap-core/docker/app@sha256:<digest>
 ```
+
+## Estado
+
+- 2026-09-16: smoke test del pipeline (`pr-checks.yml`) desde `feature/smoke-test`.
