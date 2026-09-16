@@ -173,11 +173,11 @@ jobs:
           fi
           if echo "$out" | grep -qE "Gaia id not found for email ${TF_PLAN_SA}|\"status\": \"NOT_FOUND\""; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=plan omitido (arranque en frío)::La SA ${TF_PLAN_SA} no existe todavía; se crea en L1 (apply-platform.yml). El plan de infra/${{ matrix.layer }} no se ha ejecutado."
+            echo "::warning title=plan omitido (arranque en frío)::La SA ${TF_PLAN_SA} no existe todavía; se crea en L1 (job platform-apply de deploy.yml). El plan de infra/${{ matrix.layer }} no se ha ejecutado."
             {
               echo "## :warning: plan omitido: arranque en frío"
               echo
-              echo "\`${TF_PLAN_SA}\` no existe (NOT_FOUND al suplantarla). Se crea en L1 con \`apply-platform.yml\`."
+              echo "\`${TF_PLAN_SA}\` no existe (NOT_FOUND al suplantarla). Se crea en L1 con el job \`platform-apply\` de \`deploy.yml\`."
               echo "Hasta entonces este check pasa **sin plan**. Ver README, sección \"Arranque en frío\"."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0

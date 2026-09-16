@@ -22,6 +22,15 @@ variable "github_org" {
   default     = "fixcomap"
 }
 
+variable "github_org_id" {
+  description = <<-EOT
+    ID numérico de la organización (gh api orgs/fixcomap --jq .id). Inmutable: un nombre
+    de organización puede borrarse y ser registrado por otro; el ID no.
+  EOT
+  type        = string
+  default     = "329960363"
+}
+
 variable "github_repo" {
   description = "Repositorio (sin org) autorizado a suplantar las SAs."
   type        = string

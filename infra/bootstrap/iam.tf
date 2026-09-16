@@ -39,5 +39,5 @@ resource "google_storage_bucket_iam_member" "tf_platform_state" {
 resource "google_service_account_iam_member" "tf_platform_wif" {
   service_account_id = google_service_account.tf_platform.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.sub_ref/repo:${var.github_org}/${var.github_repo}:environment:platform@refs/heads/main"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repo_ref_env/${var.github_org}/${var.github_repo}:refs/heads/main:environment:platform"
 }
