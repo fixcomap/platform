@@ -18,6 +18,7 @@ resource "google_project_iam_member" "tf_platform" {
     "roles/iam.workloadIdentityPoolAdmin",   # gestionar el pool/provider de esta capa una vez migrada al pipeline
     "roles/artifactregistry.admin",          # repositorio Docker y su IAM
     "roles/secretmanager.admin",             # secretos y su IAM (nunca lee versiones: eso es secretAccessor)
+    "roles/storage.admin",                   # crear los buckets de estado y fijar sus bindings; en el proyecto solo hay buckets de estado
   ])
 
   project = var.project_id
@@ -25,19 +26,15 @@ resource "google_project_iam_member" "tf_platform" {
   member  = google_service_account.tf_platform.member
 }
 
-# Acceso completo al bucket de estado, a nivel de bucket y no de proyecto:
-# necesita leer/escribir el estado de todas las capas y fijar los bindings por
-# prefijo de tf-plan y gh-deployer (setIamPolicy sobre el bucket).
-resource "google_storage_bucket_iam_member" "tf_platform_state" {
-  bucket = google_storage_bucket.tfstate.name
-  role   = "roles/storage.admin"
-  member = google_service_account.tf_platform.member
-}
+# El acceso a los buckets de estado lo da storage.admin a nivel de proyecto
+# (arriba): tf-platform tiene que poder CREAR el bucket de L2 desde el pipeline
+# y eso no se concede a nivel de bucket. El binding por bucket que había aquí
+# se ha eliminado; el plan lo destruye.
 
 # Solo un job con environment "platform", desde main, del repo platform, puede
 # suplantar a tf-platform. Cualquier otra combinación no obtiene token.
 resource "google_service_account_iam_member" "tf_platform_wif" {
   service_account_id = google_service_account.tf_platform.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.sub_ref/repo:${var.github_org}/${var.github_repo}:environment:platform@refs/heads/main"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repo_ref_env/${var.github_org}/${var.github_repo}:refs/heads/main:environment:platform"
 }

@@ -10,11 +10,18 @@ env:
   GCP_PROJECT_ID: fixcomap-core
   GCP_REGION: europe-west1
   STATE_BUCKET: fixcomap-core-tfstate
+  STATE_BUCKET_APP: fixcomap-core-tfstate-app # estado de L2, bucket propio de gh-deployer
   TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
   TOFU_VERSION: 1.12.6
   CLOUD_RUN_SERVICE: app
 
 permissions: {}
+
+# bash explícito: activa pipefail, que el shell por defecto de Actions no lleva.
+# Sin él, un `tofu plan | tee` que falla termina en verde.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   gitflow:
@@ -41,6 +48,7 @@ jobs:
       contents: read
     defaults:
       run:
+        shell: bash
         working-directory: app
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -101,12 +109,14 @@ jobs:
       matrix:
         # dns no se planifica en PR: su token solo existe en el environment platform.
         include:
-          - { layer: bootstrap, plan: true }
-          - { layer: platform, plan: true }
-          - { layer: app, plan: true }
-          - { layer: dns, plan: false }
+          - { layer: bootstrap, plan: true, bucket: fixcomap-core-tfstate }
+          - { layer: platform, plan: true, bucket: fixcomap-core-tfstate }
+          - { layer: app, plan: true, bucket: fixcomap-core-tfstate-app }
+          - { layer: dns, plan: false, bucket: fixcomap-core-tfstate }
     defaults:
       run:
+        # los defaults de job no heredan el shell del workflow: pipefail también aquí
+        shell: bash
         working-directory: infra/${{ matrix.layer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -173,11 +183,11 @@ jobs:
           fi
           if echo "$out" | grep -qE "Gaia id not found for email ${TF_PLAN_SA}|\"status\": \"NOT_FOUND\""; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=plan omitido (arranque en frío)::La SA ${TF_PLAN_SA} no existe todavía; se crea en L1 (apply-platform.yml). El plan de infra/${{ matrix.layer }} no se ha ejecutado."
+            echo "::warning title=plan omitido (arranque en frío)::La SA ${TF_PLAN_SA} no existe todavía; se crea en L1 (job platform-apply de deploy.yml). El plan de infra/${{ matrix.layer }} no se ha ejecutado."
             {
               echo "## :warning: plan omitido: arranque en frío"
               echo
-              echo "\`${TF_PLAN_SA}\` no existe (NOT_FOUND al suplantarla). Se crea en L1 con \`apply-platform.yml\`."
+              echo "\`${TF_PLAN_SA}\` no existe (NOT_FOUND al suplantarla). Se crea en L1 con el job \`platform-apply\` de \`deploy.yml\`."
               echo "Hasta entonces este check pasa **sin plan**. Ver README, sección \"Arranque en frío\"."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
@@ -186,10 +196,25 @@ jobs:
           echo "::error::Fallo de autenticación distinto del arranque en frío"
           exit 1
 
+      - name: estado de la capa existe
+        # Segundo caso de arranque en frío: una capa nunca aplicada no tiene objeto de
+        # estado y OpenTofu intenta crear uno vacío, cosa que tf-plan (solo lectura) no
+        # puede hacer. Se comprueba la existencia del objeto antes de planificar.
+        id: state
+        if: steps.sa.outputs.exists == 'true'
+        run: |
+          if gcloud storage objects describe "gs://${{ matrix.bucket }}/${{ matrix.layer }}/default.tfstate" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=plan omitido (capa sin estado)::infra/${{ matrix.layer }} no se ha aplicado nunca; no hay estado que planificar. Lo crea deploy.yml."
+            echo "## :warning: plan omitido: \`infra/${{ matrix.layer }}\` aún no tiene estado en \`gs://${{ matrix.bucket }}/${{ matrix.layer }}/\`. Lo crea \`deploy.yml\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: imagen desplegada (L2)
         # El plan de L2 necesita var.image. Se toma la del servicio en producción para
         # que el plan refleje solo cambios de infra, no de imagen.
-        if: matrix.layer == 'app' && steps.sa.outputs.exists == 'true'
+        if: matrix.layer == 'app' && steps.state.outputs.exists == 'true'
         run: |
           IMAGE=$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
             --format 'value(spec.template.spec.containers[0].image)' 2>/dev/null || true)
@@ -197,12 +222,12 @@ jobs:
 
       - name: tofu plan
         id: plan
-        if: steps.sa.outputs.exists == 'true'
+        if: steps.state.outputs.exists == 'true'
         env:
           TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
         run: |
           tofu init -input=false -reconfigure \
-            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="bucket=${{ matrix.bucket }}" \
             -backend-config="prefix=${{ matrix.layer }}"
           # -lock=false: tf-plan solo tiene objectViewer y no puede crear el .tflock
           tofu plan -input=false -lock=false -no-color -out=tfplan 2>&1 | tee plan.txt
@@ -213,7 +238,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           LAYER: ${{ matrix.layer }}
-          OUTCOME: ${{ steps.sa.outputs.exists == 'false' && 'omitido — arranque en frío, tf-plan no existe' || steps.plan.outcome }}
+          OUTCOME: ${{ steps.sa.outputs.exists == 'false' && 'omitido — arranque en frío, tf-plan no existe' || steps.state.outputs.exists == 'false' && 'omitido — capa sin estado, nunca aplicada' || steps.plan.outcome }}
         with:
           script: |
             const fs = require('fs');

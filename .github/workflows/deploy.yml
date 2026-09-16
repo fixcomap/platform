@@ -1,0 +1,292 @@
+# Único workflow de despliegue. Corre en CADA push a main, sin filtro de paths:
+# una release garantiza que plataforma y app están aplicadas, no solo "si este
+# merge tocó infra/**". Tres jobs en secuencia, cada uno con su identidad:
+#
+#   platform-plan  (tf-plan, solo lectura)  -> ¿hay cambios en L0/L1? ¿arranque en frío? ¿cambió dns?
+#   platform-apply (tf-platform, environment platform, aprobación) -> solo si el anterior lo pide
+#   app            (gh-deployer)            -> build, trivy, cosign, push, apply L2, tag
+#
+# platform-apply es el único job que puede crear IAM: la condición OIDC de
+# tf-platform exige environment == platform, y ese environment exige aprobación.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: fixcomap-core
+  GCP_REGION: europe-west1
+  STATE_BUCKET: fixcomap-core-tfstate
+  STATE_BUCKET_APP: fixcomap-core-tfstate-app # estado de L2, bucket propio de gh-deployer
+  TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
+  TF_PLATFORM_SA: tf-platform@fixcomap-core.iam.gserviceaccount.com
+  GH_DEPLOYER_SA: gh-deployer@fixcomap-core.iam.gserviceaccount.com
+  IMAGE_REPO: europe-west1-docker.pkg.dev/fixcomap-core/docker/app
+  TOFU_VERSION: 1.12.6
+  TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
+
+permissions: {}
+
+# bash explícito: activa pipefail, que el shell por defecto de Actions no lleva.
+# Sin él, un `tofu plan | tee` que falla termina en verde.
+defaults:
+  run:
+    shell: bash
+
+# Un despliegue a la vez, en orden de llegada; nunca se cancela uno en curso.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  platform-plan:
+    name: platform-plan (tf-plan)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      apply_needed: ${{ steps.decide.outputs.apply_needed }}
+      dns_changed: ${{ steps.dns.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # dos commits bastan para el diff del merge; workflow_dispatch no tiene "before"
+          fetch-depth: 2
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tofu_wrapper: false
+
+      - name: auth GCP (tf-plan)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.TF_PLAN_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: tf-plan existe
+        # Arranque en frío: tf-plan nace en L1. Si no existe (NOT_FOUND al suplantarla)
+        # no se puede planificar y la única salida es aplicar. Condición explícita sobre
+        # ese error; cualquier otro fallo de auth tumba el job.
+        id: sa
+        run: |
+          set +e
+          out=$(gcloud auth print-access-token 2>&1 >/dev/null)
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then echo "exists=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if echo "$out" | grep -qE "Gaia id not found for email ${TF_PLAN_SA}|\"status\": \"NOT_FOUND\""; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=arranque en frío::${TF_PLAN_SA} no existe; se pasa directamente a platform-apply"
+            echo "## :warning: arranque en frío: \`${TF_PLAN_SA}\` no existe, no hay plan previo. platform-apply mostrará el suyo." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "$out"
+          echo "::error::Fallo de autenticación distinto del arranque en frío"
+          exit 1
+
+      - name: plan L0 + L1
+        id: plan
+        # En workflow_dispatch no se planifica aquí: dispatch significa "quiero
+        # aplicar" y es la salida cuando tf-plan no puede planificar (p. ej. le
+        # falta un permiso que precisamente L1 corrige). platform-apply hace su
+        # propio plan con tf-platform y espera aprobación igualmente.
+        if: steps.sa.outputs.exists == 'true' && github.event_name != 'workflow_dispatch'
+        run: |
+          changed=false
+          for layer in bootstrap platform; do
+            pushd "infra/$layer" >/dev/null
+            tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=$layer"
+            set +e
+            # -lock=false: tf-plan no puede crear el .tflock (solo objectViewer)
+            tofu plan -input=false -lock=false -no-color -detailed-exitcode -out=tfplan
+            rc=$?
+            set -e
+            case "$rc" in
+              0) echo "## infra/$layer: sin cambios" >> "$GITHUB_STEP_SUMMARY" ;;
+              2) changed=true
+                 { echo "## infra/$layer: cambios pendientes"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY" ;;
+              *) exit "$rc" ;;
+            esac
+            popd >/dev/null
+          done
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: cambios en infra/dns
+        # dns no puede planificarse aquí (su token solo existe en el environment), así
+        # que se aplica cuando cambian sus ficheros o en un dispatch manual.
+        id: dns
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -q '^infra/dns/'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: decidir
+        id: decide
+        env:
+          COLD: ${{ steps.sa.outputs.exists == 'false' }}
+          CHANGED: ${{ steps.plan.outputs.changed }}
+          DNS: ${{ steps.dns.outputs.changed }}
+          DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          if [ "$COLD" = "true" ] || [ "$CHANGED" = "true" ] || [ "$DNS" = "true" ] || [ "$DISPATCH" = "true" ]; then
+            echo "apply_needed=true" >> "$GITHUB_OUTPUT"
+            echo "**platform-apply: necesario** (frío=$COLD, cambios=$CHANGED, dns=$DNS, dispatch=$DISPATCH)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "apply_needed=false" >> "$GITHUB_OUTPUT"
+            echo "**platform-apply: no necesario**, se salta sin pedir aprobación" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  platform-apply:
+    name: platform-apply (tf-platform, aprobación)
+    needs: platform-plan
+    if: needs.platform-plan.outputs.apply_needed == 'true'
+    runs-on: ubuntu-latest
+    environment: platform
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tofu_wrapper: false
+
+      - name: auth GCP (tf-platform)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.TF_PLATFORM_SA }}
+
+      # L0 antes que L1: L1 depende del pool de WIF y del bucket. Cada capa vuelve a
+      # planificar con su propia identidad y aplica ese plan, nunca el de tf-plan.
+      - name: apply L0 (bootstrap)
+        working-directory: infra/bootstrap
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=bootstrap"
+          tofu plan -input=false -no-color -out=tfplan
+          { echo "## apply infra/bootstrap"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan
+
+      - name: apply L1 (platform)
+        working-directory: infra/platform
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=platform"
+          tofu plan -input=false -no-color -out=tfplan
+          { echo "## apply infra/platform"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan
+
+      # dns: la única credencial de larga duración (token de Cloudflare) es un secret
+      # del environment platform; ningún otro job del repo puede leerla.
+      - name: apply dns
+        if: needs.platform-plan.outputs.dns_changed == 'true'
+        working-directory: infra/dns
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }} # secret y no var: los env de un step salen en el log
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=dns"
+          tofu plan -input=false -no-color -out=tfplan
+          { echo "## apply infra/dns"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan
+
+  app:
+    name: app (gh-deployer)
+    needs: [platform-plan, platform-apply]
+    # Corre si platform-apply terminó bien o se saltó por no ser necesario; nunca
+    # si falló o fue rechazado, porque L2 depende de L1.
+    if: ${{ !cancelled() && needs.platform-plan.result == 'success' && needs.platform-apply.result != 'failure' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # crear el tag vX.Y.Z
+      id-token: write   # OIDC para GCP y para la firma keyless de cosign
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: auth GCP (gh-deployer)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GH_DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: docker login (Artifact Registry)
+        run: gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
+
+      - name: versión
+        run: |
+          echo "VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+
+      - name: build
+        # --provenance=false: sin manifiestos de attestation, que en Artifact Registry
+        # aparecen como versiones sin tag y ocupan cuota.
+        run: |
+          docker build --provenance=false \
+            -t "$IMAGE_REPO:$SHORT_SHA" -t "$IMAGE_REPO:v$VERSION" app
+
+      - name: trivy image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_REPO }}:${{ env.SHORT_SHA }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: push
+        run: |
+          docker push "$IMAGE_REPO:$SHORT_SHA"
+          docker push "$IMAGE_REPO:v$VERSION"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_REPO:$SHORT_SHA")
+          echo "IMAGE_DIGEST=$DIGEST" >> "$GITHUB_ENV"
+          echo "imagen: $DIGEST" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: cosign sign (keyless)
+        # Firma por digest con la identidad OIDC del workflow; verificable con
+        # --certificate-identity-regexp y --certificate-oidc-issuer.
+        run: cosign sign --yes "$IMAGE_DIGEST"
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tofu_wrapper: false
+
+      - name: apply L2 (app)
+        working-directory: infra/app
+        env:
+          TF_VAR_image: ${{ env.IMAGE_DIGEST }}
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=app"
+          tofu plan -input=false -no-color -out=tfplan
+          { echo "## apply infra/app"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan
+          echo "url: $(tofu output -raw service_url)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: tag vVERSION
+        # Solo si no existe: un hotfix que no toque VERSION no re-etiqueta.
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            echo "tag v$VERSION ya existe"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "v$VERSION"
