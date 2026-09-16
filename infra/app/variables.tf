@@ -27,6 +27,12 @@ variable "app_runtime_email" {
   default     = "app-runtime@fixcomap-core.iam.gserviceaccount.com"
 }
 
+variable "database_url_secret_id" {
+  description = "Secreto de L1 con la cadena de conexión; montado como fichero en /secrets/database-url."
+  type        = string
+  default     = "database-url"
+}
+
 variable "app_config_secret_id" {
   description = "Secreto de L1 montado como variable de entorno."
   type        = string

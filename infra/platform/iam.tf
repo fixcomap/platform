@@ -57,6 +57,12 @@ resource "google_secret_manager_secret_iam_member" "app_runtime_config" {
   member    = google_service_account.app_runtime.member
 }
 
+resource "google_secret_manager_secret_iam_member" "app_runtime_database_url" {
+  secret_id = google_secret_manager_secret.database_url.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.app_runtime.member
+}
+
 # ---------- tf-plan ----------
 
 # viewer a nivel de proyecto: puede leer cualquier recurso para hacer refresh,
