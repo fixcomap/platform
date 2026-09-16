@@ -6,7 +6,8 @@ El producto aún no está definido.
 ## Contexto
 
 - GCP: proyecto `fixcomap-core`, región `europe-west1`. Free Trial ($300) hasta el 16/12/2026.
-- GitHub: org `fixcomap`, repo `fixcomap/platform`, público.
+- GitHub: org `fixcomap`, repo `fixcomap/platform`, **privado**, org en plan Free: 2.000 min/mes de Actions;
+  sin rulesets ni required reviewers hasta pasar a Team o hacerlo público. Minimizar runs: agrupar cambios.
 - Dominio `fixcomap.com`, DNS en Cloudflare. Hostname de la app: `app.fixcomap.com` (`www` y el apex quedan libres para la landing).
 - IaC: OpenTofu (`tofu`, nunca `terraform`). Provider google `~> 8.3`, cloudflare `~> 5.25`.
 
@@ -29,7 +30,7 @@ El producto aún no está definido.
    Todo el despliegue va en `deploy.yml` (jobs `platform-plan` → `platform-apply` → `app`), en cada push a
    `main`. Ningún job crea IAM salvo `platform-apply`.
 4. `tofu plan` es el criterio de verdad. Nada está hecho hasta que el plan sale limpio.
-5. Secretos y estado fuera del repo (bucket `fixcomap-core-tfstate`, Secret Manager, GitHub secrets).
+5. Secretos y estado fuera del repo (buckets `fixcomap-core-tfstate` y `-app`, Secret Manager, GitHub secrets).
 
 ## Cómo trabajar aquí
 

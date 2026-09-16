@@ -30,20 +30,13 @@ resource "google_artifact_registry_repository_iam_member" "gh_deployer_writer" {
   member     = google_service_account.gh_deployer.member
 }
 
-# Estado de L2 y nada más. La condición limita el binding al prefijo app. GCS
-# evalúa resource.name también en las llamadas list (contra el parámetro prefix
-# de la petición); el backend gcs lista con prefix=app, sin barra final, así que
-# la condición no puede llevarla. Ningún otro prefijo del bucket empieza por "app".
+# Estado de L2 y nada más: bucket propio, sin condiciones. Las condiciones IAM
+# por prefijo no autorizan storage.objects.list, que el backend gcs necesita en
+# init, así que el aislamiento se hace por bucket y no por prefijo.
 resource "google_storage_bucket_iam_member" "gh_deployer_state" {
-  bucket = var.state_bucket
+  bucket = var.state_bucket_app
   role   = "roles/storage.objectUser"
   member = google_service_account.gh_deployer.member
-
-  condition {
-    title       = "solo-prefijo-app"
-    description = "Estado de L2 únicamente; L0 y L1 son de tf-platform."
-    expression  = "resource.name.startsWith(\"projects/_/buckets/${var.state_bucket}/objects/app\")"
-  }
 }
 
 # Solo desde main. En PR no hay token para gh-deployer, así que un PR no puede
@@ -82,12 +75,19 @@ resource "google_project_iam_member" "tf_plan_viewer" {
   member  = google_service_account.tf_plan.member
 }
 
-# Lectura del estado de todas las capas. Sin escritura: por eso los plan de PR
-# y drift van con -lock=false (no puede crear el objeto .tflock).
+# Lectura del estado de todas las capas (los dos buckets). Sin escritura: por
+# eso los plan de PR y drift van con -lock=false (no puede crear el .tflock).
 resource "google_storage_bucket_iam_member" "tf_plan_state" {
-  bucket = var.state_bucket
+  for_each = toset([var.state_bucket, var.state_bucket_app])
+
+  bucket = each.value
   role   = "roles/storage.objectViewer"
   member = google_service_account.tf_plan.member
+}
+
+moved {
+  from = google_storage_bucket_iam_member.tf_plan_state
+  to   = google_storage_bucket_iam_member.tf_plan_state["fixcomap-core-tfstate"]
 }
 
 # Cualquier rama del repo. Es seguro porque la SA no puede modificar nada.

@@ -33,3 +33,35 @@ resource "google_storage_bucket" "tfstate" {
 
   depends_on = [google_project_service.bootstrap]
 }
+
+# Estado de L2, aparte. Mismos controles que el principal. Lo crea tf-platform
+# desde el pipeline, por eso depende de su storage.admin a nivel de proyecto.
+resource "google_storage_bucket" "tfstate_app" {
+  # checkov:skip=CKV_GCP_62: mismo motivo que el bucket principal
+  name     = var.state_bucket_app
+  location = var.region
+
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+
+  versioning {
+    enabled = true
+  }
+
+  lifecycle_rule {
+    condition {
+      num_newer_versions = 10
+      with_state         = "ARCHIVED"
+    }
+    action {
+      type = "Delete"
+    }
+  }
+
+  force_destroy = false
+
+  depends_on = [
+    google_project_service.bootstrap,
+    google_project_iam_member.tf_platform["roles/storage.admin"],
+  ]
+}
