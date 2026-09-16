@@ -186,10 +186,25 @@ jobs:
           echo "::error::Fallo de autenticación distinto del arranque en frío"
           exit 1
 
+      - name: estado de la capa existe
+        # Segundo caso de arranque en frío: una capa nunca aplicada no tiene objeto de
+        # estado y OpenTofu intenta crear uno vacío, cosa que tf-plan (solo lectura) no
+        # puede hacer. Se comprueba la existencia del objeto antes de planificar.
+        id: state
+        if: steps.sa.outputs.exists == 'true'
+        run: |
+          if gcloud storage objects describe "gs://$STATE_BUCKET/${{ matrix.layer }}/default.tfstate" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=plan omitido (capa sin estado)::infra/${{ matrix.layer }} no se ha aplicado nunca; no hay estado que planificar. Lo crea deploy.yml."
+            echo "## :warning: plan omitido: \`infra/${{ matrix.layer }}\` aún no tiene estado en \`gs://$STATE_BUCKET/${{ matrix.layer }}/\`. Lo crea \`deploy.yml\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: imagen desplegada (L2)
         # El plan de L2 necesita var.image. Se toma la del servicio en producción para
         # que el plan refleje solo cambios de infra, no de imagen.
-        if: matrix.layer == 'app' && steps.sa.outputs.exists == 'true'
+        if: matrix.layer == 'app' && steps.state.outputs.exists == 'true'
         run: |
           IMAGE=$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
             --format 'value(spec.template.spec.containers[0].image)' 2>/dev/null || true)
@@ -197,7 +212,7 @@ jobs:
 
       - name: tofu plan
         id: plan
-        if: steps.sa.outputs.exists == 'true'
+        if: steps.state.outputs.exists == 'true'
         env:
           TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
         run: |
@@ -213,7 +228,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           LAYER: ${{ matrix.layer }}
-          OUTCOME: ${{ steps.sa.outputs.exists == 'false' && 'omitido — arranque en frío, tf-plan no existe' || steps.plan.outcome }}
+          OUTCOME: ${{ steps.sa.outputs.exists == 'false' && 'omitido — arranque en frío, tf-plan no existe' || steps.state.outputs.exists == 'false' && 'omitido — capa sin estado, nunca aplicada' || steps.plan.outcome }}
         with:
           script: |
             const fs = require('fs');
