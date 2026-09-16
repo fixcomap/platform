@@ -11,6 +11,7 @@ env:
   GCP_PROJECT_ID: fixcomap-core
   GCP_REGION: europe-west1
   STATE_BUCKET: fixcomap-core-tfstate
+  STATE_BUCKET_APP: fixcomap-core-tfstate-app # estado de L2, bucket propio de gh-deployer
   TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
   TOFU_VERSION: 1.12.6
   CLOUD_RUN_SERVICE: app
@@ -36,7 +37,10 @@ jobs:
       matrix:
         # dns queda fuera: su token solo existe en el environment platform y un cron
         # no puede pedir aprobación. Cloudflare conserva su propio audit log.
-        layer: [bootstrap, platform, app]
+        include:
+          - { layer: bootstrap, bucket: fixcomap-core-tfstate }
+          - { layer: platform, bucket: fixcomap-core-tfstate }
+          - { layer: app, bucket: fixcomap-core-tfstate-app }
     defaults:
       run:
         # los defaults de job no heredan el shell del workflow: pipefail también aquí
@@ -63,7 +67,7 @@ jobs:
         # drift: se avisa y se salta hasta que deploy.yml la aplique.
         id: state
         run: |
-          if gcloud storage objects describe "gs://$STATE_BUCKET/${{ matrix.layer }}/default.tfstate" >/dev/null 2>&1; then
+          if gcloud storage objects describe "gs://${{ matrix.bucket }}/${{ matrix.layer }}/default.tfstate" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -83,7 +87,7 @@ jobs:
         env:
           TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
         run: |
-          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=${{ matrix.layer }}"
+          tofu init -input=false -backend-config="bucket=${{ matrix.bucket }}" -backend-config="prefix=${{ matrix.layer }}"
           set +e
           tofu plan -input=false -lock=false -no-color -detailed-exitcode -out=tfplan
           rc=$?
