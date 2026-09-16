@@ -226,6 +226,10 @@ puede planificar: la federación OIDC funciona, pero suplantar `tf-plan` devuelv
 (`Gaia id not found for email tf-plan@...`). `pr-checks.yml` detecta **ese error concreto** en el paso
 `tf-plan existe`, termina el job en verde con un aviso en el step summary y publica en el PR
 "plan omitido (arranque en frío)". Cualquier otro fallo de autenticación sigue tumbando el check.
+Segundo caso: una capa que existe pero **nunca se ha aplicado** no tiene objeto de estado, y OpenTofu
+intentaría crear uno vacío (escritura que `tf-plan` no puede hacer). El paso `estado de la capa existe`
+comprueba `gs://fixcomap-core-tfstate/<capa>/default.tfstate` y, si falta, omite el plan con aviso.
+`drift.yml` hace la misma comprobación.
 Secuencia:
 
 1. L0 desde Cloud Shell y variables de GitHub (pasos 2 y 3).
