@@ -17,6 +17,12 @@ env:
 
 permissions: {}
 
+# bash explícito: activa pipefail, que el shell por defecto de Actions no lleva.
+# Sin él, un `tofu plan | tee` que falla termina en verde.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   plan:
     name: drift (${{ matrix.layer }})
