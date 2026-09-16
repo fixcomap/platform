@@ -197,7 +197,7 @@ jobs:
         working-directory: infra/dns
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          TF_VAR_cloudflare_zone_id: ${{ vars.CLOUDFLARE_ZONE_ID }}
+          TF_VAR_cloudflare_zone_id: ${{ secrets.CLOUDFLARE_ZONE_ID }} # secret y no var: los env de un step salen en el log
         run: |
           tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=dns"
           tofu plan -input=false -no-color -out=tfplan
