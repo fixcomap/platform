@@ -134,7 +134,9 @@ gh repo edit $R --default-branch develop --enable-merge-commit --enable-squash-m
 for f in main develop tags; do gh api -X POST repos/$R/rulesets --input .github/rulesets/$f.json; done
 ```
 
-Los rulesets no tienen `bypass_actors`: tampoco los admins pueden hacer push directo. Los nombres de
+`develop` exige PR y checks en verde pero **0 aprobaciones** (el trabajo diario fluye); `main` exige
+**1 aprobación** del otro DevOps (solo releases y hotfixes). Los rulesets no tienen `bypass_actors`: tampoco los
+admins pueden hacer push directo. Los nombres de
 los checks requeridos son los `name:` de los jobs de `pr-checks.yml`; si se renombra un job hay que
 actualizar `.github/rulesets/*.json` y reaplicar con `gh api -X PUT repos/$R/rulesets/<id>`.
 
