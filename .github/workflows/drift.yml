@@ -39,6 +39,8 @@ jobs:
         layer: [bootstrap, platform, app]
     defaults:
       run:
+        # los defaults de job no heredan el shell del workflow: pipefail también aquí
+        shell: bash
         working-directory: infra/${{ matrix.layer }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
