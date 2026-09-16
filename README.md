@@ -8,7 +8,7 @@ y desplegada íntegramente por GitHub Actions mediante Workload Identity Federat
 | Capa | Directorio | Identidad que aplica | Cuándo | Contiene |
 |---|---|---|---|---|
 | L0 | `infra/bootstrap/` | Persona (Cloud Shell) la primera vez; después `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | Bucket de estado, APIs mínimas, WIF pool + provider, SA `tf-platform` |
-| L1 | `infra/platform/` | `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `app-runtime` / `tf-plan`, IAM, Secret Manager |
+| L1 | `infra/platform/` | `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `app-runtime` / `tf-plan`, IAM (incl. `run.invoker` público), Secret Manager |
 | L2 | `infra/app/` | `gh-deployer` | `deploy.yml` → `app`, automático en `main` | Cloud Run, domain mapping |
 | dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | CNAME `app.fixcomap.com` |
 
@@ -95,6 +95,10 @@ y eso no lo decide un merge automático. El environment `platform` de GitHub exi
 apruebe la ejecución, y la condición OIDC de `tf-platform` hace que ese environment sea la única vía
 para obtener su token: un workflow sin `environment: platform` no consigue credenciales aunque lo
 intente. `gh-deployer` no tiene ningún permiso IAM, así que el job `app` puede ser automático.
+
+**Cambios de IAM sobre la propia identidad del pipeline** (p. ej. mover un rol de `tf-platform` de bucket a
+proyecto) se hacen en dos PRs: primero añadir el nuevo, después quitar el viejo. En uno solo, OpenTofu los
+aplica en paralelo y el rol nuevo puede no haber propagado cuando ya se retiró el viejo (pasó el 16/09/2026).
 
 La aprobación se pide **solo cuando hace falta**: `platform-plan` (solo lectura) detecta antes si hay
 cambios en L0/L1, si `tf-plan` aún no existe o si cambió `infra/dns/`; si no, `platform-apply` se salta.
@@ -249,6 +253,10 @@ Secuencia:
    en frío en `platform-plan`, pide aprobación en `platform-apply` y aplica L0 y L1 (crea `tf-plan`).
 3. Desde ese momento todos los PRs planifican. Si vuelve a aparecer el aviso, es que `tf-plan` ha
    desaparecido: `drift.yml` y `cost-guard.yml` fallan a diario en ese caso, no lo silencian.
+4. Tras el primer despliegue de L2 (el servicio existe), PR que ponga `app_public = true` en
+   `infra/platform/variables.tf`: `platform-apply` concede `run.invoker` a `allUsers`. Hasta entonces el
+   servicio responde 403 a peticiones sin token. `invoker_iam_disabled` no es alternativa: Cloud Run exige
+   `run.services.setIamPolicy` para cambiarlo, y `gh-deployer` no lo tiene por diseño.
 
 Mergear en `main` (vía `release/*`). `deploy.yml`: `platform-plan` → `platform-apply` (aprobación en el
 environment `platform`; aplica L0 sin cambios, L1 y `dns`) → `app` (build, firma, L2). Ver CONTRIBUTING.
