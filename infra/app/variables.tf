@@ -32,18 +32,3 @@ variable "app_config_secret_id" {
   type        = string
   default     = "app-config"
 }
-
-variable "app_hostname" {
-  description = "Debe coincidir con el CNAME de infra/dns. www y el apex quedan libres para la landing."
-  type        = string
-  default     = "app.fixcomap.com"
-}
-
-variable "enable_domain_mapping" {
-  description = <<-EOT
-    El domain mapping falla si gh-deployer no es propietario verificado del dominio
-    en Search Console (paso manual, ver README). Hasta entonces, false.
-  EOT
-  type        = bool
-  default     = true
-}

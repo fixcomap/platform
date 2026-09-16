@@ -8,8 +8,8 @@ y desplegada íntegramente por GitHub Actions mediante Workload Identity Federat
 | Capa | Directorio | Identidad que aplica | Cuándo | Contiene |
 |---|---|---|---|---|
 | L0 | `infra/bootstrap/` | Persona (Cloud Shell) la primera vez; después `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | Bucket de estado, APIs mínimas, WIF pool + provider, SA `tf-platform` |
-| L1 | `infra/platform/` | `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `app-runtime` / `tf-plan`, IAM (incl. `run.invoker` público), Secret Manager |
-| L2 | `infra/app/` | `gh-deployer` | `deploy.yml` → `app`, automático en `main` | Cloud Run, domain mapping |
+| L1 | `infra/platform/` | `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `app-runtime` / `tf-plan`, IAM (incl. `run.invoker` público), domain mapping, Secret Manager |
+| L2 | `infra/app/` | `gh-deployer` | `deploy.yml` → `app`, automático en `main` | Cloud Run (solo el servicio) |
 | dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | CNAME `app.fixcomap.com` |
 
 Estado: bucket `fixcomap-core-tfstate` (prefijos `bootstrap/`, `platform/`, `dns/`) y bucket propio
@@ -263,13 +263,15 @@ environment `platform`; aplica L0 sin cambios, L1 y `dns`) → `app` (build, fir
 
 ### 5. Dominio `app.fixcomap.com`
 
-El domain mapping de Cloud Run exige que la identidad que lo crea sea propietaria verificada del
-dominio. Es un paso manual:
+El domain mapping exige que la identidad que lo crea sea propietaria verificada del dominio. Se hizo por
+API (Site Verification) con la cuenta Owner: TXT `google-site-verification=…` en Cloudflare y
+`webResource.insert` con `owners` = `tf-platform@…` y `gh-deployer@…`. Para repetirlo o añadir
+propietarios: Search Console → `fixcomap.com` → Usuarios y permisos.
 
-1. `gcloud domains verify fixcomap.com` (abre Search Console; verificar con registro TXT en Cloudflare).
-2. En Search Console > `fixcomap.com` > Usuarios y permisos, añadir `gh-deployer@fixcomap-core.iam.gserviceaccount.com` como propietario.
-3. PR que cambie `enable_domain_mapping` a `true` en `infra/app/variables.tf`. El plan del PR debe
-   mostrar solo el `google_cloud_run_domain_mapping`. El CNAME ya existe desde el primer apply de `dns`.
+El mapping vive en L1 (`infra/platform/domain.tf`, toggle `enable_domain_mapping`): `run.domainmappings.*`
+solo existe en `run.admin` (no en `run.developer` ni en roles custom), y exponer un hostname es decisión de
+plataforma como el invoker. Orden en un arranque desde cero: L2 crea el servicio → PR con
+`enable_domain_mapping = true` → `platform-apply`. El CNAME (`infra/dns`) puede existir antes.
 
 ## Coste
 
