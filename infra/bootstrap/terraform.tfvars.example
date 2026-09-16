@@ -1,5 +1,6 @@
 # Todos los valores tienen default; este fichero solo hace falta para sobrescribirlos.
 project_id  = "fixcomap-core"
 region      = "europe-west1"
-github_org  = "fixcomap"
+github_org    = "fixcomap"
+github_org_id = "329960363"
 github_repo = "platform"

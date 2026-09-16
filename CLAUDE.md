@@ -18,13 +18,16 @@ El producto aún no está definido.
    Si algo parece necesitar una clave de larga duración, el enfoque está mal.
    Única excepción: el token de API de Cloudflare (no federa OIDC), scoped a `Zone > DNS > Edit`
    de `fixcomap.com` y guardado como secret del environment `platform`.
+   El repo es posterior al 15/07/2026: el `sub` OIDC es `repo:ORG@ID/REPO@ID:...`. Nunca bindear por `sub` literal;
+   el environment se extrae del `sub` en el attribute mapping (`infra/bootstrap/wif.tf`).
 3. Todo se aplica por pipeline. Cada capa con su propia SA y permisos mínimos:
    - L0 `infra/bootstrap/`: se aplica UNA vez desde Cloud Shell; luego lo gestiona el pipeline con `tf-platform`.
    - L1 `infra/platform/`: pipeline con `tf-platform`, environment `platform` con aprobación humana.
    - L2 `infra/app/`: pipeline con `gh-deployer`. Nunca toca IAM.
    - `infra/dns/`: pipeline con el token de Cloudflare (secret del environment `platform`).
    - `tf-plan`: solo lectura (`roles/viewer`), cualquier rama, para plan en PR y drift.
-   Ningún workflow crea IAM salvo `apply-platform.yml`.
+   Todo el despliegue va en `deploy.yml` (jobs `platform-plan` → `platform-apply` → `app`), en cada push a
+   `main`. Ningún job crea IAM salvo `platform-apply`.
 4. `tofu plan` es el criterio de verdad. Nada está hecho hasta que el plan sale limpio.
 5. Secretos y estado fuera del repo (bucket `fixcomap-core-tfstate`, Secret Manager, GitHub secrets).
 
@@ -35,7 +38,7 @@ El producto aún no está definido.
 - Nada de módulos ni abstracciones hasta que haya repetición real.
 - Al terminar cambios de infra: `tofu fmt`, `tofu validate`, `tofu plan`. Nunca `apply` desde una máquina local.
 - GitFlow solo como convención de ramas: `feature/*` → `develop`; `release/*` y `hotfix/*` → `main`. Ver `CONTRIBUTING.md`.
-- Versión en `VERSION`; el tag `vX.Y.Z` lo crea `apply-app.yml` al mergear en `main`.
+- Versión en `VERSION`; el tag `vX.Y.Z` lo crea el job `app` de `deploy.yml` al mergear en `main`.
 - Actions pineadas por commit SHA con comentario `# vX.Y.Z`; Renovate las mantiene (`renovate.json`).
 - Plan offline (sin credenciales): `backend_override.tf` local + `GOOGLE_OAUTH_ACCESS_TOKEN=offline`. Ver `CONTRIBUTING.md`.
 - `cost-guard.yml` bloquea recursos de coste fijo en PR salvo etiqueta `cost-approved` + "Coste estimado:".
