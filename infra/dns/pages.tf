@@ -1,37 +1,13 @@
-# Landing estática en Cloudflare Pages (free tier: 500 builds/mes, ancho de banda
-# ilimitado). Fuente: el repo fixcomap/web vía la GitHub App de Cloudflare, sin
-# credenciales en Actions: Cloudflare hace pull y publica en cada push a main.
-# Sin build: sirve public/ tal cual. El contenido vive en su repo porque es
-# contenido, no plataforma; aquí solo el proyecto, sus dominios y el DNS.
+# Landing estática en Cloudflare Pages (free tier: 500 despliegues/mes, ancho de
+# banda ilimitado). Proyecto de "direct upload": sin source de Git. Publica el
+# pipeline de fixcomap/web (wrangler pages deploy) con un token acotado a Pages,
+# así el despliegue pasa por sus checks y queda registrado en Actions, y puede
+# crecer (build, firma) sin cambiar de modelo. Aquí solo el proyecto, sus
+# dominios y el DNS.
 resource "cloudflare_pages_project" "landing" {
   account_id        = var.cloudflare_account_id
   name              = "fixcomap-landing"
   production_branch = "main"
-
-  source = {
-    type = "github"
-    config = {
-      owner             = "fixcomap"
-      repo_name         = "web"
-      production_branch = "main"
-      # Solo develop genera previews (<hash>.fixcomap-landing.pages.dev); las
-      # ramas feature/* y las de Renovate no, para no gastar builds.
-      preview_deployment_setting     = "custom"
-      preview_branch_includes        = ["develop"]
-      preview_branch_excludes        = []
-      production_deployments_enabled = true
-      pr_comments_enabled            = false
-      path_includes                  = ["*"]
-      path_excludes                  = []
-    }
-  }
-
-  build_config = {
-    build_command   = ""
-    destination_dir = "public"
-    root_dir        = ""
-    build_caching   = false
-  }
 }
 
 # Dominios del proyecto. Pages emite el certificado (Google Trust Services) al

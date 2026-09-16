@@ -324,13 +324,13 @@ Las instancias en ejecución siguen con la versión anterior hasta que escalan a
 
 El contenido de `fixcomap.com` / `www` vive en [`fixcomap/web`](https://github.com/fixcomap/web)
 (HTML/CSS estático, mismos rulesets y checks que aquí). Este repo solo tiene el proyecto de Cloudflare
-Pages, sus dominios y el DNS (`infra/dns/pages.tf`). Pages hace pull de `fixcomap/web` con su GitHub App:
-`main` → producción, `develop` → preview en `*.fixcomap-landing.pages.dev`. Sin credenciales en Actions.
-Free tier: 500 builds/mes, tráfico ilimitado.
+Pages, sus dominios y el DNS (`infra/dns/pages.tf`). `web` despliega desde su pipeline: `main` →
+producción, `develop` → preview en `develop.fixcomap-landing.pages.dev`. Free tier: 500 despliegues/mes,
+tráfico ilimitado.
 
-Manual, una vez: instalar la GitHub App "Cloudflare Workers and Pages" en la org con acceso a `web`
-(Cloudflare → Workers & Pages → Create → Pages → Connect to Git; basta con autorizar, sin crear el
-proyecto), y crear `hola@fixcomap.com` en Email Routing.
+El proyecto es de *direct upload*: publica el `deploy.yml` de `fixcomap/web` con `wrangler pages deploy`
+y un token acotado a Pages (secret del environment `production` de ese repo). Manual, una vez: crear
+`hola@fixcomap.com` en Email Routing.
 
 ## Disponibilidad
 
