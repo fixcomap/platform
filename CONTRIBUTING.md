@@ -6,7 +6,7 @@ GitFlow como convención de ramas, un solo entorno. Todo lo que llega a `main` s
 
 | Rama | Sale de | Vuelve a | Despliega |
 |---|---|---|---|
-| `main` | — | — | Sí: `apply-platform.yml` (con aprobación) y `apply-app.yml` |
+| `main` | — | — | Sí: `deploy.yml` (`platform-apply` con aprobación solo si hay cambios; `app` siempre) |
 | `develop` | `main` | — | No. Solo checks |
 | `feature/<nombre>` | `develop` | `develop` | No |
 | `release/<x.y.z>` | `develop` | `main` y de vuelta a `develop` | Al mergear en `main` |
@@ -49,7 +49,7 @@ gh pr create --base main --fill
 gh pr create --base develop --head hotfix/0.2.1 --fill
 ```
 
-El tag `vX.Y.Z` lo crea `apply-app.yml` a partir de `VERSION` al mergear en `main`, si no existe.
+El tag `vX.Y.Z` lo crea el job `app` de `deploy.yml` a partir de `VERSION` al mergear en `main`, si no existe.
 No se crean tags a mano.
 
 ## Checks en cada PR (`pr-checks.yml`)
@@ -71,10 +71,18 @@ en el recurso, con el motivo de verdad.
 
 ## Qué pasa al mergear en `main`
 
-- Cambios en `infra/bootstrap/**`, `infra/platform/**` o `infra/dns/**` → `apply-platform.yml`, espera
-  aprobación en el environment `platform`, aplica L0 y L1 con `tf-platform` y `dns` con el token de Cloudflare.
-- Cambios en `app/**`, `infra/app/**` o `VERSION` → `apply-app.yml`: build, `trivy image`, push a
-  Artifact Registry, firma keyless con `cosign`, `tofu apply` de L2 con `gh-deployer`, tag.
+`deploy.yml` corre en **cada** push a `main`, sin filtro de paths (una release garantiza que todo está
+aplicado, no solo lo que tocó ese merge). Tres jobs en secuencia:
+
+1. `platform-plan` (`tf-plan`, solo lectura): plan de L0 y L1 con `-detailed-exitcode`. Decide si hace
+   falta aplicar: cambios pendientes, arranque en frío (`tf-plan` no existe), `infra/dns/**` tocado o
+   `workflow_dispatch`. Sin nada de eso, `platform-apply` se salta **sin pedir aprobación**.
+2. `platform-apply` (`tf-platform`, environment `platform`): espera aprobación —el revisor ya tiene el
+   plan en el step summary del job anterior—, vuelve a planificar con su identidad y aplica L0, L1 y,
+   si cambió, `dns` (token de Cloudflare del environment).
+3. `app` (`gh-deployer`): solo si `platform-apply` terminó bien o se saltó. Build, `trivy image`, push a
+   Artifact Registry, firma keyless con `cosign`, `tofu apply` de L2, tag `vVERSION` si no existe.
+   Si la imagen y L2 no cambian, el apply es no-op.
 - `drift.yml` corre cada noche a las 04:00 UTC: `plan -detailed-exitcode` en L0, L1 y L2 y abre un
   issue `[drift] infra/<capa>` (etiqueta `drift`) si hay cambios. `dns` queda fuera (sin token).
 - `cost-guard.yml` (05:00 UTC) inventaría con `tf-plan` recursos con coste fijo y el tamaño de Artifact

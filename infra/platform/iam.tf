@@ -50,7 +50,7 @@ resource "google_storage_bucket_iam_member" "gh_deployer_state" {
 resource "google_service_account_iam_member" "gh_deployer_wif" {
   service_account_id = google_service_account.gh_deployer.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${local.wif_pool}/attribute.repository_ref/${local.repo}@refs/heads/main"
+  member             = "principalSet://iam.googleapis.com/${local.wif_pool}/attribute.repository_ref/${local.repo}:refs/heads/main"
 }
 
 # ---------- app-runtime ----------
