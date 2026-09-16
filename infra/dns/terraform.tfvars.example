@@ -1,2 +1,3 @@
-cloudflare_zone_id = "<zone id de fixcomap.com>"
-app_hostname       = "app.fixcomap.com"
+cloudflare_zone_id    = "<zone id de fixcomap.com>"
+cloudflare_account_id = "<account id de Cloudflare>"
+app_hostname          = "app.fixcomap.com"
