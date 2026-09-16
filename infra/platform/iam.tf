@@ -67,11 +67,18 @@ resource "google_secret_manager_secret_iam_member" "app_runtime_config" {
 # ---------- tf-plan ----------
 
 # viewer a nivel de proyecto: puede leer cualquier recurso para hacer refresh,
-# no puede escribir ninguno ni acceder a versiones de secretos.
+# no puede escribir ninguno ni acceder a versiones de secretos. No incluye
+# storage.buckets.getIamPolicy, necesario para refrescar los bindings del bucket
+# de estado; lo aporta securityReviewer (solo *.list y *.getIamPolicy, sin set).
 resource "google_project_iam_member" "tf_plan_viewer" {
   # checkov:skip=CKV_GCP_117: viewer es exactamente el alcance buscado (lectura de todo para refresh del plan); un rol custom habría que mantenerlo recurso a recurso
+  for_each = toset([
+    "roles/viewer",
+    "roles/iam.securityReviewer",
+  ])
+
   project = var.project_id
-  role    = "roles/viewer"
+  role    = each.value
   member  = google_service_account.tf_plan.member
 }
 
@@ -88,4 +95,11 @@ resource "google_service_account_iam_member" "tf_plan_wif" {
   service_account_id = google_service_account.tf_plan.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${local.wif_pool}/attribute.repository/${local.repo}"
+}
+
+# El binding de viewer pasó de recurso único a for_each; sin esto el plan lo
+# destruiría y recrearía (ventana sin permisos para tf-plan).
+moved {
+  from = google_project_iam_member.tf_plan_viewer
+  to   = google_project_iam_member.tf_plan_viewer["roles/viewer"]
 }
