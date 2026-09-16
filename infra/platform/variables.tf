@@ -39,6 +39,21 @@ variable "app_public" {
   default     = true
 }
 
+variable "app_hostname" {
+  description = "Hostname del servicio; debe coincidir con el CNAME de infra/dns. www y el apex quedan libres."
+  type        = string
+  default     = "app.fixcomap.com"
+}
+
+variable "enable_domain_mapping" {
+  description = <<-EOT
+    Crea el domain mapping. Requiere que el servicio exista (L2 aplicado) y que
+    tf-platform sea propietario verificado del dominio.
+  EOT
+  type        = bool
+  default     = true
+}
+
 variable "github_org" {
   type    = string
   default = "fixcomap"

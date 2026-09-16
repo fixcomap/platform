@@ -7,9 +7,9 @@ resource "google_cloud_run_v2_service" "app" {
   ingress  = "INGRESS_TRAFFIC_ALL"
 
   # Sin invoker_iam_disabled: Cloud Run exige run.services.setIamPolicy para
-  # cambiarlo, es decir, IAM. La exposición pública (run.invoker a allUsers) vive
-  # en L1 (infra/platform/cloud_run_iam.tf) tras el toggle app_public, y la
-  # aplica tf-platform. L2 no toca IAM.
+  # cambiarlo, es decir, IAM. La exposición pública (run.invoker a allUsers y el
+  # domain mapping) vive en L1 (cloud_run_iam.tf, domain.tf) y la aplica
+  # tf-platform. L2 no toca IAM ni hostnames.
 
   # PoC sin datos: el servicio debe poder destruirse desde el pipeline.
   deletion_protection = false
