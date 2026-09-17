@@ -1,0 +1,125 @@
+# Checks reutilizables para los repos de sitios estáticos de la org. Los llama
+# cada repo desde su PR y push; los pines y versiones se mantienen aquí.
+#   gitflow   la rama origen puede mergearse en la base (solo en PR)
+#   security  gitleaks + trivy (secretos y misconfig)
+#   html-css  build opcional, W3C Nu sobre el sitio, stylelint si el repo lo
+#             define, CSP en _headers y assets locales referenciados presentes
+name: rw-static-checks
+
+on:
+  workflow_call:
+    inputs:
+      site_dir:
+        description: Directorio del sitio (publicado tal cual o generado por build_cmd).
+        type: string
+        default: public
+      build_cmd:
+        description: Comando de build. Vacío = sitio estático sin build.
+        type: string
+        default: ""
+      require_csp:
+        description: Exigir Content-Security-Policy y frame-ancestors 'none' en <site_dir>/_headers.
+        type: boolean
+        default: true
+      node_version:
+        type: string
+        default: "22"
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  gitflow:
+    name: gitflow (rama origen)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          HEAD: ${{ github.head_ref }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          case "$BASE" in
+            main)    pat='^(release|hotfix)/' ;;
+            develop) pat='^(feature|bugfix|release|hotfix)/' ;;
+            *)       echo "rama base no contemplada: $BASE"; exit 1 ;;
+          esac
+          echo "$HEAD" | grep -Eq "$pat" || { echo "'$HEAD' no puede mergearse en '$BASE' (patrón: $pat)"; exit 1; }
+
+  security:
+    name: gitleaks + trivy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 git --no-banner --redact --exit-code 1 .
+      - name: trivy fs (secret + misconfig)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  html-css:
+    name: html + css
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SITE_DIR: ${{ inputs.site_dir }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || '' }}
+
+      - name: npm ci
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci --no-audit --no-fund
+
+      - name: build
+        if: inputs.build_cmd != ''
+        env:
+          BUILD_CMD: ${{ inputs.build_cmd }}
+        run: |
+          bash -euo pipefail -c "$BUILD_CMD"
+          test -d "$SITE_DIR" || { echo "::error::el build no ha generado $SITE_DIR"; exit 1; }
+
+      - name: validar HTML (W3C Nu)
+        run: |
+          docker run --rm -v "$PWD/$SITE_DIR:/site:ro" ghcr.io/validator/validator:24.10.17 \
+            vnu --skip-non-html --errors-only --also-check-css /site
+
+      - name: stylelint
+        # Solo si el repo define el script; los sitios con build ya lintan en el suyo.
+        if: hashFiles('package.json') != ''
+        run: npm run -s lint:css --if-present
+
+      - name: _headers con CSP
+        if: inputs.require_csp
+        run: |
+          f="$SITE_DIR/_headers"
+          test -f "$f" || { echo "::error::falta $f"; exit 1; }
+          grep -qE "Content-Security-Policy: default-src '(self|none)'" "$f" || { echo "::error::$f sin CSP con default-src 'self'|'none'"; exit 1; }
+          grep -q "frame-ancestors 'none'" "$f" || { echo "::error::$f sin frame-ancestors 'none'"; exit 1; }
+
+      - name: assets referenciados existen
+        # Aviso, no fallo: fotos y PDFs se suben a mano y no deben bloquear cambios
+        # de estilo o infra. En producción se verían como enlaces rotos.
+        run: |
+          while IFS=: read -r html ref; do
+            path="${ref%%[?#]*}"
+            [ -f "$SITE_DIR$path" ] || echo "::warning file=$html::falta $SITE_DIR$path (referenciado en $html)"
+          done < <(grep -rHoE '(src|href)="/[^"/][^"]*"' --include='*.html' "$SITE_DIR" | sed -E 's/:(src|href)="/:/; s/"$//')

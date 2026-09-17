@@ -1,0 +1,144 @@
+# Despliegue reutilizable a Cloudflare Pages por direct upload (wrangler).
+# Lo llaman los repos de sitios estáticos de la org (fixcomap/web, portfolios)
+# con un workflow de pocas líneas; la lógica, los pines y su mantenimiento
+# (Renovate) viven aquí, una sola vez.
+#
+#   PR            → preview   <rama>.<proyecto>.pages.dev   (se ve antes de mergear)
+#   push develop  → preview   develop.<proyecto>.pages.dev
+#   push main     → producción, dominio propio
+#
+# El mismo camino se ejecuta en PR y en main: si este workflow se rompe, se ve
+# en la PR, no después del merge. Siempre termina con un smoke test.
+#
+# El environment lo decide el caller (production/preview): la aprobación y los
+# secrets de Cloudflare son suyos (o de la org), nunca de este repo.
+name: rw-pages-deploy
+
+on:
+  workflow_call:
+    inputs:
+      project_name:
+        description: Nombre del proyecto en Cloudflare Pages (lo gestiona infra/dns de este repo).
+        required: true
+        type: string
+      environment:
+        description: Environment del repo caller (production | preview); aporta aprobación y secrets.
+        required: true
+        type: string
+      site_dir:
+        description: Directorio que se publica tal cual (o que produce build_cmd).
+        type: string
+        default: public
+      build_cmd:
+        description: Comando de build (p.ej. "npm run build"). Vacío = sitio estático sin build.
+        type: string
+        default: ""
+      production_branch:
+        description: Rama que Pages trata como producción.
+        type: string
+        default: main
+      production_url:
+        description: URL pública a comprobar tras publicar la rama de producción. Vacío = solo la URL de Pages.
+        type: string
+        default: ""
+      node_version:
+        type: string
+        default: "22"
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+    outputs:
+      url:
+        description: URL del deployment publicado.
+        value: ${{ jobs.pages.outputs.url }}
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  WRANGLER_VERSION: 4.132.0
+
+jobs:
+  pages:
+    name: pages (${{ inputs.environment }})
+    # Las PRs de forks no reciben secrets: no hay nada que desplegar.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # En PR github.ref_name es "N/merge"; la rama real es head_ref.
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      # Inputs a env y no interpolados en run: evita inyección de plantilla.
+      PROJECT: ${{ inputs.project_name }}
+      SITE_DIR: ${{ inputs.site_dir }}
+      PROD_BRANCH: ${{ inputs.production_branch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || '' }}
+
+      - name: build
+        if: inputs.build_cmd != ''
+        env:
+          BUILD_CMD: ${{ inputs.build_cmd }}
+        run: |
+          npm ci --no-audit --no-fund
+          bash -euo pipefail -c "$BUILD_CMD"
+          test -d "$SITE_DIR" || { echo "::error::el build no ha generado $SITE_DIR"; exit 1; }
+
+      - name: proyecto Pages existe
+        # La API rechaza crear un proyecto de direct upload sin source vía el
+        # provider de OpenTofu (error 8000011); wrangler sí sabe. Se crea aquí si
+        # falta e infra/dns lo importa al estado para gestionar dominios y vigilar
+        # drift. Idempotente.
+        run: |
+          if npx --yes "wrangler@$WRANGLER_VERSION" pages project list 2>/dev/null \
+               | grep -qE "(^|[^a-z0-9-])$PROJECT([^a-z0-9-]|$)"; then
+            echo "proyecto $PROJECT ya existe"
+          else
+            npx --yes "wrangler@$WRANGLER_VERSION" pages project create "$PROJECT" \
+              --production-branch "$PROD_BRANCH"
+          fi
+
+      - name: wrangler pages deploy
+        id: deploy
+        run: |
+          npx --yes "wrangler@$WRANGLER_VERSION" pages deploy "$SITE_DIR" \
+            --project-name "$PROJECT" \
+            --branch "$BRANCH" \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "$(git log -1 --format=%s)" \
+            --commit-dirty=false 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[a-z0-9.-]+\.pages\.dev' deploy.log | tail -1)
+          [ -n "$url" ] || { echo "::error::wrangler no ha devuelto URL"; exit 1; }
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "- rama \`$BRANCH\` → $url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: smoke test
+        # Siempre, también en preview: un deploy que no responde es un deploy fallido.
+        env:
+          URLS: ${{ steps.deploy.outputs.url }} ${{ env.BRANCH == inputs.production_branch && inputs.production_url || '' }}
+        run: |
+          for u in $URLS; do
+            ok=0
+            for _ in $(seq 1 12); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$u/" || true)
+              [ "$code" = "200" ] && { echo "$u → 200"; ok=1; break; }
+              sleep 10
+            done
+            [ "$ok" = 1 ] || { echo "::error::$u no responde 200 tras el deploy (último código: $code)"; exit 1; }
+          done

@@ -69,6 +69,18 @@
       "extractVersionTemplate": "^v(?<version>.*)$"
     },
     {
+      "description": "wrangler fijado como env WRANGLER_VERSION en rw-pages-deploy.yml",
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "WRANGLER_VERSION: (?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "wrangler"
+    },
+    {
       "description": "tflint fijado en setup-tflint",
       "customType": "regex",
       "managerFilePatterns": [
