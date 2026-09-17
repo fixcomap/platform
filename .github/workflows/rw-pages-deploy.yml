@@ -100,29 +100,31 @@ jobs:
           bash -euo pipefail -c "$BUILD_CMD"
           test -d "$SITE_DIR" || { echo "::error::el build no ha generado $SITE_DIR"; exit 1; }
 
-      - name: proyecto Pages existe
-        # La API rechaza crear un proyecto de direct upload sin source vía el
-        # provider de OpenTofu (error 8000011); wrangler sí sabe. Se crea aquí si
-        # falta e infra/dns lo importa al estado para gestionar dominios y vigilar
-        # drift. Idempotente.
-        run: |
-          if npx --yes "wrangler@$WRANGLER_VERSION" pages project list 2>/dev/null \
-               | grep -qE "(^|[^a-z0-9-])$PROJECT([^a-z0-9-]|$)"; then
-            echo "proyecto $PROJECT ya existe"
-          else
-            npx --yes "wrangler@$WRANGLER_VERSION" pages project create "$PROJECT" \
-              --production-branch "$PROD_BRANCH"
-          fi
-
       - name: wrangler pages deploy
         id: deploy
+        # Se despliega directamente y solo si el proyecto no existe (8000007) se
+        # crea y se reintenta: listar proyectos en cada deploy disparaba el rate
+        # limit de la API de Pages (10429) con pocos deploys seguidos. La API
+        # rechaza crear un proyecto de direct upload vía el provider de OpenTofu
+        # (8000011); wrangler sí sabe, e infra/dns lo importa después al estado.
         run: |
-          npx --yes "wrangler@$WRANGLER_VERSION" pages deploy "$SITE_DIR" \
-            --project-name "$PROJECT" \
-            --branch "$BRANCH" \
-            --commit-hash "$GITHUB_SHA" \
-            --commit-message "$(git log -1 --format=%s)" \
-            --commit-dirty=false 2>&1 | tee deploy.log
+          deploy() {
+            npx --yes "wrangler@$WRANGLER_VERSION" pages deploy "$SITE_DIR" \
+              --project-name "$PROJECT" \
+              --branch "$BRANCH" \
+              --commit-hash "$GITHUB_SHA" \
+              --commit-message "$(git log -1 --format=%s)" \
+              --commit-dirty=false > deploy.log 2>&1
+          }
+          if ! deploy; then
+            cat deploy.log
+            grep -qE 'Project not found|8000007' deploy.log || exit 1
+            echo "proyecto $PROJECT no existe: se crea"
+            npx --yes "wrangler@$WRANGLER_VERSION" pages project create "$PROJECT" \
+              --production-branch "$PROD_BRANCH"
+            deploy || { cat deploy.log; exit 1; }
+          fi
+          cat deploy.log
           url=$(grep -oE 'https://[a-z0-9.-]+\.pages\.dev' deploy.log | tail -1)
           [ -n "$url" ] || { echo "::error::wrangler no ha devuelto URL"; exit 1; }
           echo "url=$url" >> "$GITHUB_OUTPUT"
