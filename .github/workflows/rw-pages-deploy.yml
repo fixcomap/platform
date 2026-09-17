@@ -102,8 +102,8 @@ jobs:
 
       - name: wrangler pages deploy
         id: deploy
-        # Se despliega directamente y solo si el proyecto no existe (8000007) se
-        # crea y se reintenta: listar proyectos en cada deploy disparaba el rate
+        # Se despliega directamente y solo si el proyecto no existe (8000007 o
+        # "does not exist") se crea y se reintenta: listar proyectos disparaba el rate
         # limit de la API de Pages (10429) con pocos deploys seguidos. La API
         # rechaza crear un proyecto de direct upload vía el provider de OpenTofu
         # (8000011); wrangler sí sabe, e infra/dns lo importa después al estado.
@@ -118,7 +118,7 @@ jobs:
           }
           if ! deploy; then
             cat deploy.log
-            grep -qE 'Project not found|8000007' deploy.log || exit 1
+            grep -qE 'Project not found|8000007|does not exist' deploy.log || exit 1
             echo "proyecto $PROJECT no existe: se crea"
             npx --yes "wrangler@$WRANGLER_VERSION" pages project create "$PROJECT" \
               --production-branch "$PROD_BRANCH"
