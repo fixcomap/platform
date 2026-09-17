@@ -54,3 +54,32 @@ resource "cloudflare_dns_record" "www" {
   proxied = true
   comment = "Landing en Cloudflare Pages (OpenTofu, infra/dns)"
 }
+
+# Portfolio de Agustín (repo fixcomap/agustin): mismo modelo que la landing,
+# proyecto creado por wrangler desde su ci.yml e importado aquí.
+resource "cloudflare_pages_project" "agustin" {
+  account_id        = var.cloudflare_account_id
+  name              = "fixcomap-agustin"
+  production_branch = "main"
+}
+
+import {
+  to = cloudflare_pages_project.agustin
+  id = "${var.cloudflare_account_id}/fixcomap-agustin"
+}
+
+resource "cloudflare_pages_domain" "agustin" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.agustin.name
+  name         = "agustin.fixcomap.com"
+}
+
+resource "cloudflare_dns_record" "agustin" {
+  zone_id = var.cloudflare_zone_id
+  name    = "agustin.fixcomap.com"
+  type    = "CNAME"
+  content = cloudflare_pages_project.agustin.subdomain
+  ttl     = 1
+  proxied = true
+  comment = "Portfolio de Agustín en Cloudflare Pages (OpenTofu, infra/dns)"
+}
