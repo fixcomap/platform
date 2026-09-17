@@ -88,8 +88,66 @@ aplicado, no solo lo que tocó ese merge). Tres jobs en secuencia:
 - `cost-guard.yml` (05:00 UTC) inventaría con `tf-plan` recursos con coste fijo y el tamaño de Artifact
   Registry; abre `[cost] recursos fuera del free tier` (etiqueta `cost`) si encuentra algo.
 - Renovate abre PRs contra `develop` los lunes: SHA de Actions (con `# vX.Y.Z`), providers (minor/patch),
-  versiones de `tofu`/`tflint`/`gitleaks`, Go e imagen base. Los major de providers se hacen a mano con
-  la guía de upgrade delante.
+  versiones de `tofu`/`tflint`/`gitleaks`/`wrangler`, Go e imagen base. Los major de providers se hacen a
+  mano con la guía de upgrade delante.
+
+## Pipelines de los sitios estáticos (`rw-*.yml`)
+
+Los repos de sitios estáticos de la org (`fixcomap/web`, portfolios) no tienen pipeline propio: llaman
+a dos *reusable workflows* de este repo con un `ci.yml` de pocas líneas. La lógica, los pines y Renovate
+viven aquí una sola vez; cambiar el pipeline es una PR aquí, no una por repo.
+
+- `rw-static-checks.yml`: gitflow (solo en PR), gitleaks + trivy, build opcional, W3C Nu, stylelint si
+  el repo lo define, CSP en `_headers`, aviso por assets locales que faltan.
+- `rw-pages-deploy.yml`: `wrangler pages deploy` al proyecto indicado. **El mismo job corre en PR
+  (preview `<rama>.<proyecto>.pages.dev`), en `develop` (preview) y en `main` (producción)**, y siempre
+  termina con un smoke test. Si el pipeline está roto, se ve en la PR, no tras el merge. El environment
+  (`preview`/`production`) y los secrets de Cloudflare son del repo caller (o de la org).
+
+Caller mínimo (`fixcomap/web/.github/workflows/ci.yml`):
+
+```yaml
+on:
+  pull_request: { branches: [develop, main] }
+  push: { branches: [develop, main] }
+permissions: {}
+concurrency: { group: ci-${{ github.head_ref || github.ref_name }}, cancel-in-progress: false }
+jobs:
+  checks:
+    uses: fixcomap/platform/.github/workflows/rw-static-checks.yml@main
+    with: { site_dir: public }
+  deploy:
+    needs: checks
+    uses: fixcomap/platform/.github/workflows/rw-pages-deploy.yml@main
+    with:
+      project_name: fixcomap-landing
+      site_dir: public
+      environment: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
+      production_url: https://fixcomap.com
+    secrets: inherit
+```
+
+Los callers apuntan a `@main`: un cambio en `rw-*` llega a los sitios cuando se hace release aquí. Para
+probar un cambio antes, el caller de una PR de `web` puede apuntar temporalmente a `@feature/<rama>`.
+El proyecto de Pages y sus dominios se declaran en `infra/dns/pages.tf` (import del proyecto que crea
+`wrangler` la primera vez).
+
+## Runbook: cuando algo está en rojo
+
+Premisa: **un pipeline roto no tira producción**. Pages y Cloud Run son atómicos: si el deploy falla,
+sigue sirviendo la versión anterior. Lo que se pierde es poder desplegar, y para eso está esto.
+
+| Síntoma | Qué mirar | Qué hacer |
+|---|---|---|
+| `deploy` rojo en `platform-plan`/`platform-apply` | step summary del job: el plan | Si el error es del provider (API, cuota) → `gh run rerun <id> --failed`. Si el plan quiere destruir algo inesperado → **no aprobar**, abrir hotfix. |
+| `deploy` rojo en `app` | `trivy image` (CVE nueva en la base) o `tofu apply` L2 | CVE: PR bumpeando imagen base/Go. Apply: leer el error; L2 no toca IAM, nada que romper fuera de Cloud Run. |
+| `deploy` de `web`/portfolio rojo | job `pages`: build, wrangler o smoke test | Build/lint: arreglar en PR. Wrangler 401/403: token de Cloudflare revocado → regenerar (Account > Pages > Edit + Zone > DNS > Edit) y actualizar el secret. Smoke test: ver la URL de Pages del summary. |
+| Landing/app caída (alerta de Cloud Monitoring) | último deploy en Actions | Web: `npx wrangler pages deployment list --project-name fixcomap-landing` y `npx wrangler pages deployment rollback <id>`. App: `gcloud run services update-traffic app --region europe-west1 --to-revisions <anterior>=100`. |
+| Issue `[drift] infra/<capa>` | el plan del issue | Alguien tocó a mano. Si el cambio es deseado: llevarlo a código en PR. Si no: aprobar el `deploy` de la siguiente release, que lo revierte. |
+| Issue `[cost]` | inventario del issue | Borrar el recurso vía PR (nunca a mano) o justificarlo con `cost-approved` + coste mensual. |
+| `drift`/`cost-guard` rojo por auth (`tf-plan` no puede autenticar) | WIF pool/provider (L0) o binding de `tf-plan` (L1) | Solo `tf-platform` lo arregla desde `main`; si L0 rompió la identidad del pipeline, Cloud Shell (README). |
+| Aprobación pendiente y el aprobador no está | environment `platform` / `production` | Cualquiera de los reviewers configurados aprueba: `gh api -X POST repos/<repo>/actions/runs/<id>/pending_deployments -F 'environment_ids[]=<id>' -f state=approved -f comment=ok`. |
+| Todo `app.` parado tras el 16/12/2026 | Billing | Free Trial expirado sin activar la cuenta. Activar en Billing → *Activate full account*; los recursos vuelven solos. Hacerlo **antes**. |
 
 ## Trabajo local con OpenTofu
 

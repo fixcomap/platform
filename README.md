@@ -324,20 +324,21 @@ Las instancias en ejecución siguen con la versión anterior hasta que escalan a
 
 El contenido de `fixcomap.com` / `www` vive en [`fixcomap/web`](https://github.com/fixcomap/web)
 (HTML/CSS estático, mismos rulesets y checks que aquí). Este repo solo tiene el proyecto de Cloudflare
-Pages, sus dominios y el DNS (`infra/dns/pages.tf`). `web` despliega desde su pipeline: `main` →
-producción, `develop` → preview en `develop.fixcomap-landing.pages.dev`. Free tier: 500 despliegues/mes,
-tráfico ilimitado.
+Pages, sus dominios y el DNS (`infra/dns/pages.tf`) y los *reusable workflows* que `web` llama
+(`rw-static-checks.yml`, `rw-pages-deploy.yml`; ver `CONTRIBUTING.md`): PR → preview
+`<rama>.fixcomap-landing.pages.dev`, `develop` → preview, `main` → producción. Free tier: 500
+despliegues/mes, tráfico ilimitado.
 
-El proyecto es de *direct upload*: publica el `deploy.yml` de `fixcomap/web` con `wrangler pages deploy`
-y un token acotado a Pages (secret del environment `production` de ese repo). Manual, una vez: crear
+El proyecto es de *direct upload*: publica `wrangler pages deploy` con un token acotado a Pages (secret
+de los environments `production`/`preview` de `web`, o de la org). Manual, una vez: crear
 `hola@fixcomap.com` en Email Routing.
 
 ## Disponibilidad
 
-Uptime check de Cloud Monitoring (`infra/app/monitoring.tf`): HTTPS a `https://app.fixcomap.com/healthz`
-cada 5 min desde 3 regiones, con alerta por email a `billing@fixcomap.com` si falla desde más de una región
-durante 5 min (se cierra sola al recuperarse). Free tier: 1M ejecuciones/mes (uso ~26k), alertas y email
-sin coste. Cloud Monitoring no verifica el email: comprobar que llega la primera notificación
+Uptime checks de Cloud Monitoring (`infra/app/monitoring.tf`): HTTPS a `https://app.fixcomap.com/healthz`
+y a `https://fixcomap.com/` (la landing no vive en GCP, pero la sonda y la alerta sí) cada 5 min desde
+3 regiones, con alerta por email a `billing@fixcomap.com` si falla desde más de una región durante 5 min
+(se cierra sola al recuperarse). Free tier: 1M ejecuciones/mes (uso ~52k), alertas y email sin coste. Cloud Monitoring no verifica el email: comprobar que llega la primera notificación
 (Monitoring → Alerting → política → *Test*).
 
 ## Verificar la firma de una imagen
