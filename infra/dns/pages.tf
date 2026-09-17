@@ -83,3 +83,31 @@ resource "cloudflare_dns_record" "agustin" {
   proxied = true
   comment = "Portfolio de Agustín en Cloudflare Pages (OpenTofu, infra/dns)"
 }
+
+# Portfolio de Elías (repo fixcomap/elias, React+Vite con build en el pipeline).
+resource "cloudflare_pages_project" "elias" {
+  account_id        = var.cloudflare_account_id
+  name              = "fixcomap-elias"
+  production_branch = "main"
+}
+
+import {
+  to = cloudflare_pages_project.elias
+  id = "${var.cloudflare_account_id}/fixcomap-elias"
+}
+
+resource "cloudflare_pages_domain" "elias" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.elias.name
+  name         = "elias.fixcomap.com"
+}
+
+resource "cloudflare_dns_record" "elias" {
+  zone_id = var.cloudflare_zone_id
+  name    = "elias.fixcomap.com"
+  type    = "CNAME"
+  content = cloudflare_pages_project.elias.subdomain
+  ttl     = 1
+  proxied = true
+  comment = "Portfolio de Elías en Cloudflare Pages (OpenTofu, infra/dns)"
+}
