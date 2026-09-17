@@ -33,6 +33,12 @@ variable "app_hostname" {
   default     = "app.fixcomap.com"
 }
 
+variable "landing_hostname" {
+  description = "Hostname público de la landing (Cloudflare Pages, repo fixcomap/web); solo se sondea desde aquí."
+  type        = string
+  default     = "fixcomap.com"
+}
+
 variable "alert_email" {
   description = "Destino de las alertas de disponibilidad. Cloud Monitoring no verifica emails; comprobar que llega la primera."
   type        = string
