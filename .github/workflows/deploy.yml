@@ -50,6 +50,7 @@ jobs:
     outputs:
       apply_needed: ${{ steps.decide.outputs.apply_needed }}
       dns_changed: ${{ steps.dns.outputs.changed }}
+      observability_changed: ${{ steps.observability.outputs.changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -133,17 +134,33 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: cambios en infra/observability
+        # Igual que dns: su token (Grafana) solo existe en el environment.
+        id: observability
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -q '^infra/observability/'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: decidir
         id: decide
         env:
           COLD: ${{ steps.sa.outputs.exists == 'false' }}
           CHANGED: ${{ steps.plan.outputs.changed }}
           DNS: ${{ steps.dns.outputs.changed }}
+          OBS: ${{ steps.observability.outputs.changed }}
           DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          if [ "$COLD" = "true" ] || [ "$CHANGED" = "true" ] || [ "$DNS" = "true" ] || [ "$DISPATCH" = "true" ]; then
+          if [ "$COLD" = "true" ] || [ "$CHANGED" = "true" ] || [ "$DNS" = "true" ] || [ "$OBS" = "true" ] || [ "$DISPATCH" = "true" ]; then
             echo "apply_needed=true" >> "$GITHUB_OUTPUT"
-            echo "**platform-apply: necesario** (frío=$COLD, cambios=$CHANGED, dns=$DNS, dispatch=$DISPATCH)" >> "$GITHUB_STEP_SUMMARY"
+            echo "**platform-apply: necesario** (frío=$COLD, cambios=$CHANGED, dns=$DNS, observability=$OBS, dispatch=$DISPATCH)" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "apply_needed=false" >> "$GITHUB_OUTPUT"
             echo "**platform-apply: no necesario**, se salta sin pedir aprobación" >> "$GITHUB_STEP_SUMMARY"
@@ -204,6 +221,22 @@ jobs:
           tofu plan -input=false -no-color -out=tfplan
           { echo "## apply infra/dns"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           tofu apply -input=false tfplan
+
+      # observability: token de service account de Grafana Cloud (rol Editor),
+      # segunda credencial de larga duración; también secret del environment.
+      - name: apply observability
+        if: needs.platform-plan.outputs.observability_changed == 'true'
+        working-directory: infra/observability
+        env:
+          GRAFANA_AUTH: ${{ secrets.GRAFANA_AUTH }}
+          TF_VAR_grafana_url: ${{ vars.GRAFANA_URL }}
+          TF_VAR_stack_slug: ${{ vars.GRAFANA_STACK_SLUG }}
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=observability"
+          tofu plan -input=false -no-color -out=tfplan
+          { echo "## apply infra/observability"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan
+          echo "dashboard: $(tofu output -raw dashboard_url)" >> "$GITHUB_STEP_SUMMARY"
 
   app:
     name: app (gh-deployer)

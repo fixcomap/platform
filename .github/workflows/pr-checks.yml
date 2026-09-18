@@ -107,12 +107,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # dns no se planifica en PR: su token solo existe en el environment platform.
+        # dns y observability no se planifican en PR: sus tokens solo existen en el environment platform.
         include:
           - { layer: bootstrap, plan: true, bucket: fixcomap-core-tfstate }
           - { layer: platform, plan: true, bucket: fixcomap-core-tfstate }
           - { layer: app, plan: true, bucket: fixcomap-core-tfstate-app }
           - { layer: dns, plan: false, bucket: fixcomap-core-tfstate }
+          - { layer: observability, plan: false, bucket: fixcomap-core-tfstate }
     defaults:
       run:
         # los defaults de job no heredan el shell del workflow: pipefail también aquí

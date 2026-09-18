@@ -26,6 +26,7 @@ El producto aún no está definido.
    - L1 `infra/platform/`: pipeline con `tf-platform`, environment `platform` con aprobación humana.
    - L2 `infra/app/`: pipeline con `gh-deployer`. Nunca toca IAM.
    - `infra/dns/`: pipeline con el token de Cloudflare (secret del environment `platform`).
+   - `infra/observability/`: pipeline con el token de Grafana Cloud (secret del environment `platform`). Dashboard, SLOs y alertas.
    - `tf-plan`: solo lectura (`roles/viewer`), cualquier rama, para plan en PR y drift.
    Todo el despliegue va en `deploy.yml` (jobs `platform-plan` → `platform-apply` → `app`), en cada push a
    `main`. Ningún job crea IAM salvo `platform-apply`.
