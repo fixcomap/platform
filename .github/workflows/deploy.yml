@@ -274,6 +274,7 @@ jobs:
         working-directory: infra/app
         env:
           TF_VAR_image: ${{ env.IMAGE_DIGEST }}
+          TF_VAR_otlp_endpoint: ${{ vars.OTLP_ENDPOINT }} # var de repo (no es secreto); vacía = sin telemetría
         run: |
           tofu init -input=false -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=app"
           tofu plan -input=false -no-color -out=tfplan
