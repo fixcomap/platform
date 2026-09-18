@@ -231,6 +231,7 @@ jobs:
           GRAFANA_AUTH: ${{ secrets.GRAFANA_AUTH }}
           TF_VAR_grafana_url: ${{ vars.GRAFANA_URL }}
           TF_VAR_stack_slug: ${{ vars.GRAFANA_STACK_SLUG }}
+          TF_VAR_alert_email: ${{ vars.GRAFANA_ALERT_EMAIL }}
         run: |
           tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=observability"
           tofu plan -input=false -no-color -out=tfplan
