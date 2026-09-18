@@ -15,9 +15,8 @@ variable "service_name" {
 }
 
 variable "alert_email" {
-  description = "Destino de las alertas de Grafana. Mismo buzón que Cloud Monitoring."
+  description = "Destino de las alertas de Grafana. Grafana Cloud solo acepta emails de usuarios de la organización (el buzón compartido billing@ no lo es); se pasa desde la variable de repo GRAFANA_ALERT_EMAIL."
   type        = string
-  default     = "billing@fixcomap.com"
 }
 
 variable "slo_availability" {
