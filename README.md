@@ -341,6 +341,28 @@ y a `https://fixcomap.com/` (la landing no vive en GCP, pero la sonda y la alert
 (se cierra sola al recuperarse). Free tier: 1M ejecuciones/mes (uso ~52k), alertas y email sin coste. Cloud Monitoring no verifica el email: comprobar que llega la primera notificación
 (Monitoring → Alerting → política → *Test*).
 
+## Observabilidad (OpenTelemetry → Grafana Cloud)
+
+La app exporta trazas y métricas (HTTP por ruta y código, runtime de Go) por OTLP/HTTP a **Grafana Cloud
+free** (10k series, 50 GB de logs y trazas, 14 días de retención; sin tarjeta) y escribe logs JSON con
+`trace_id` que Cloud Logging correlaciona. Todo llega por variables estándar `OTEL_*` (`infra/app/cloud_run.tf`):
+el código no conoce el backend, y sin `OTEL_EXPORTER_OTLP_ENDPOINT` no exporta (local, previews).
+`/healthz` no genera trazas. Si el exportador falla, la app sigue sirviendo y lo deja en el log.
+
+Configuración, una vez:
+
+```sh
+# 1. Grafana Cloud → Connections → OpenTelemetry (OTLP): endpoint, instance ID y token.
+# 2. Endpoint como variable de repositorio (no es secreto):
+gh variable set OTLP_ENDPOINT --body "https://otlp-gateway-prod-eu-west-2.grafana.net/otlp"
+# 3. Cabecera de autenticación en Secret Manager (fuera del repo; el placeholder lo crea L1):
+printf 'Authorization=Basic %s' "$(printf '%s:%s' "<instance-id>" "<token>" | base64)" \
+  | gcloud secrets versions add otlp-headers --project fixcomap-core --data-file=-
+# 4. Un despliegue (release) para que Cloud Run lea la variable y la versión nueva del secreto.
+```
+
+Verificación: Grafana → Explore → Tempo, `{resource.service.name="app"}` tras un `curl https://app.fixcomap.com/`.
+
 ## Verificar la firma de una imagen
 
 ```sh

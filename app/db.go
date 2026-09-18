@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -36,30 +35,30 @@ func dbcheck(w http.ResponseWriter, r *http.Request) {
 
 	dsn, err := databaseURL()
 	if err != nil {
-		log.Printf("dbcheck: sin cadena de conexión: %v", err)
+		logger(r.Context()).Warn("dbcheck: sin cadena de conexión", "err", err)
 		http.Error(w, "db not configured", http.StatusServiceUnavailable)
 		return
 	}
 
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		log.Printf("dbcheck: open: %v", err)
+		logger(r.Context()).Error("dbcheck: open", "err", err)
 		http.Error(w, "db error", http.StatusServiceUnavailable)
 		return
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Printf("dbcheck: close: %v", err)
+			logger(r.Context()).Error("dbcheck: close", "err", err)
 		}
 	}()
 
 	var one int
 	if err := db.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil || one != 1 {
-		log.Printf("dbcheck: query: %v", err)
+		logger(r.Context()).Error("dbcheck: query", "err", err)
 		http.Error(w, "db unreachable", http.StatusServiceUnavailable)
 		return
 	}
 	if _, err := w.Write([]byte("db ok\n")); err != nil {
-		log.Printf("write response: %v", err)
+		logger(r.Context()).Error("write response", "err", err)
 	}
 }

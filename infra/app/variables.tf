@@ -45,6 +45,18 @@ variable "alert_email" {
   default     = "billing@fixcomap.com"
 }
 
+variable "otlp_endpoint" {
+  description = "Endpoint OTLP/HTTP de Grafana Cloud (p.ej. https://otlp-gateway-prod-eu-west-2.grafana.net/otlp). Vacío = la app no exporta telemetría."
+  type        = string
+  default     = ""
+}
+
+variable "otlp_headers_secret_id" {
+  description = "Secreto de L1 con las cabeceras OTLP (Authorization=Basic …), montado como OTEL_EXPORTER_OTLP_HEADERS."
+  type        = string
+  default     = "otlp-headers"
+}
+
 variable "database_url_secret_id" {
   description = "Secreto de L1 con la cadena de conexión; montado como fichero en /secrets/database-url."
   type        = string
