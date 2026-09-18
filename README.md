@@ -376,6 +376,7 @@ por el mismo motivo que la de Cloudflare: Grafana Cloud no federa OIDC.
 gh secret set GRAFANA_AUTH --env platform
 gh variable set GRAFANA_URL --body "https://<slug>.grafana.net"
 gh variable set GRAFANA_STACK_SLUG --body "<slug>"
+gh variable set GRAFANA_ALERT_EMAIL --body "<email de un usuario de la org de Grafana>"  # billing@ no vale: no es usuario
 ```
 
 ## Verificar la firma de una imagen

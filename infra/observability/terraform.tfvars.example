@@ -1,2 +1,3 @@
 grafana_url = "https://<slug>.grafana.net"
 stack_slug  = "<slug>"
+alert_email = "<email de un usuario de la org de Grafana>"
