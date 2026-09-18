@@ -66,6 +66,39 @@ resource "google_cloud_run_v2_service" "app" {
         }
       }
 
+      # OpenTelemetry → Grafana Cloud por OTLP/HTTP. Variables estándar del SDK:
+      # la app no conoce el backend. Con otlp_endpoint vacío no se exporta nada.
+      env {
+        name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+        value = var.otlp_endpoint
+      }
+
+      env {
+        name  = "OTEL_EXPORTER_OTLP_PROTOCOL"
+        value = "http/protobuf"
+      }
+
+      env {
+        name  = "OTEL_SERVICE_NAME"
+        value = var.service_name
+      }
+
+      env {
+        name  = "OTEL_RESOURCE_ATTRIBUTES"
+        value = "deployment.environment=production,cloud.provider=gcp,cloud.region=${var.region},service.version=${var.image}"
+      }
+
+      # Token de Grafana Cloud como cabecera; app-runtime tiene secretAccessor (L1).
+      env {
+        name = "OTEL_EXPORTER_OTLP_HEADERS"
+        value_source {
+          secret_key_ref {
+            secret  = var.otlp_headers_secret_id
+            version = "latest"
+          }
+        }
+      }
+
       env {
         name  = "DATABASE_URL_FILE"
         value = "/secrets/database-url"

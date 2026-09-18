@@ -86,6 +86,7 @@ jobs:
         if: steps.state.outputs.exists == 'true'
         env:
           TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
+          TF_VAR_otlp_endpoint: ${{ vars.OTLP_ENDPOINT }}
         run: |
           tofu init -input=false -backend-config="bucket=${{ matrix.bucket }}" -backend-config="prefix=${{ matrix.layer }}"
           set +e

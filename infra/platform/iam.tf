@@ -65,6 +65,12 @@ resource "google_secret_manager_secret_iam_member" "app_runtime_config" {
   member    = google_service_account.app_runtime.member
 }
 
+resource "google_secret_manager_secret_iam_member" "app_runtime_otlp_headers" {
+  secret_id = google_secret_manager_secret.otlp_headers.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.app_runtime.member
+}
+
 resource "google_secret_manager_secret_iam_member" "app_runtime_database_url" {
   secret_id = google_secret_manager_secret.database_url.id
   role      = "roles/secretmanager.secretAccessor"
