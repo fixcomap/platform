@@ -11,6 +11,7 @@ y desplegada íntegramente por GitHub Actions mediante Workload Identity Federat
 | L1 | `infra/platform/` | `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `app-runtime` / `tf-plan`, IAM (incl. `run.invoker` público), domain mapping, Secret Manager |
 | L2 | `infra/app/` | `gh-deployer` | `deploy.yml` → `app`, automático en `main` | Cloud Run (solo el servicio) |
 | dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | CNAME `app.fixcomap.com`, Pages (landing) y CNAME de `fixcomap.com`/`www` |
+| observability | `infra/observability/` | Token de Grafana Cloud (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | Dashboard, SLOs y alertas de la app en Grafana Cloud |
 
 Estado: bucket `fixcomap-core-tfstate` (prefijos `bootstrap/`, `platform/`, `dns/`) y bucket propio
 `fixcomap-core-tfstate-app` para L2. Separados porque `gh-deployer` necesita `storage.objects.list` en
@@ -362,6 +363,20 @@ printf 'Authorization=Basic %s' "$(printf '%s:%s' "<instance-id>" "<token>" | ba
 ```
 
 Verificación: Grafana → Explore → Tempo, `{resource.service.name="app"}` tras un `curl https://app.fixcomap.com/`.
+
+**Dashboard, SLOs y alertas como código** (`infra/observability/`, provider `grafana`): carpeta `fixcomap`,
+dashboard `app / overview` (disponibilidad 30 d, presupuesto de error, latencias, errores, runtime de Go),
+contact point por email y tres alertas del SLO (disponibilidad 99,5 %: burn rate rápido 1 h y lento 6 h;
+latencia p95 < 300 ms). Se aplica en `platform-apply` cuando cambia la capa, con un token de service account
+de Grafana (rol Editor) como secret del environment `platform` — la segunda credencial de larga duración,
+por el mismo motivo que la de Cloudflare: Grafana Cloud no federa OIDC.
+
+```sh
+# Grafana → Administration → Users and access → Service accounts → "opentofu", rol Editor → token
+gh secret set GRAFANA_AUTH --env platform
+gh variable set GRAFANA_URL --body "https://<slug>.grafana.net"
+gh variable set GRAFANA_STACK_SLUG --body "<slug>"
+```
 
 ## Verificar la firma de una imagen
 

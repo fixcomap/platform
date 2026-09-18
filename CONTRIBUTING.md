@@ -57,9 +57,9 @@ No se crean tags a mano.
 - `gitflow`: rama origen válida para la rama destino.
 - `app`: `gofmt`, `go vet`, `golangci-lint`, `go test -race`.
 - `security`: `gitleaks` (historial completo), `trivy fs` (vuln + secret), `trivy config` sobre `infra/`.
-- `tofu (bootstrap|platform|app|dns)`: `fmt -check`, `validate`, `tflint`, `checkov`, y `tofu plan` con
+- `tofu (bootstrap|platform|app|dns|observability)`: `fmt -check`, `validate`, `tflint`, `checkov`, y `tofu plan` con
   `tf-plan` (solo lectura, `-lock=false`), publicado como comentario en el PR (uno por capa, se actualiza
-  en cada push). `dns` no tiene plan en PR (su token solo existe en el environment `platform`). Los PRs
+  en cada push). `dns` y `observability` no tienen plan en PR (sus tokens solo existen en el environment `platform`). Los PRs
   desde forks no obtienen token OIDC: en ellos el plan se omite. Si `tf-plan` aún no existe (arranque
   en frío, antes del primer apply de L1) el job pasa con aviso y sin plan; ver README.
 - `cost-guard`: falla si `infra/` contiene tipos de recurso con coste fijo (Cloud SQL, LB, NAT, IPs,
@@ -75,16 +75,16 @@ en el recurso, con el motivo de verdad.
 aplicado, no solo lo que tocó ese merge). Tres jobs en secuencia:
 
 1. `platform-plan` (`tf-plan`, solo lectura): plan de L0 y L1 con `-detailed-exitcode`. Decide si hace
-   falta aplicar: cambios pendientes, arranque en frío (`tf-plan` no existe), `infra/dns/**` tocado o
+   falta aplicar: cambios pendientes, arranque en frío (`tf-plan` no existe), `infra/dns/**` o `infra/observability/**` tocados o
    `workflow_dispatch`. Sin nada de eso, `platform-apply` se salta **sin pedir aprobación**.
 2. `platform-apply` (`tf-platform`, environment `platform`): espera aprobación —el revisor ya tiene el
    plan en el step summary del job anterior—, vuelve a planificar con su identidad y aplica L0, L1 y,
-   si cambió, `dns` (token de Cloudflare del environment).
+   si cambiaron, `dns` (token de Cloudflare del environment) y `observability` (token de Grafana del environment).
 3. `app` (`gh-deployer`): solo si `platform-apply` terminó bien o se saltó. Build, `trivy image`, push a
    Artifact Registry, firma keyless con `cosign`, `tofu apply` de L2, tag `vVERSION` si no existe.
    Si la imagen y L2 no cambian, el apply es no-op.
 - `drift.yml` corre cada noche a las 04:00 UTC: `plan -detailed-exitcode` en L0, L1 y L2 y abre un
-  issue `[drift] infra/<capa>` (etiqueta `drift`) si hay cambios. `dns` queda fuera (sin token).
+  issue `[drift] infra/<capa>` (etiqueta `drift`) si hay cambios. `dns` y `observability` quedan fuera (sin token).
 - `cost-guard.yml` (05:00 UTC) inventaría con `tf-plan` recursos con coste fijo y el tamaño de Artifact
   Registry; abre `[cost] recursos fuera del free tier` (etiqueta `cost`) si encuentra algo.
 - Renovate abre PRs contra `develop` los lunes: SHA de Actions (con `# vX.Y.Z`), providers (minor/patch),
@@ -157,7 +157,7 @@ credenciales. El plan muestra todo como "to add" (no hay estado), que es lo que 
 qué crea una capa. `backend_override.tf` está en `.gitignore`.
 
 ```sh
-cd infra/platform          # o bootstrap, app, dns
+cd infra/platform          # o bootstrap, app, dns, observability
 printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
 tofu init -input=false
 GOOGLE_OAUTH_ACCESS_TOKEN=offline tofu plan -var project_number=000000000000
