@@ -55,6 +55,15 @@ resource "google_service_account_iam_member" "gh_deployer_wif" {
   member             = "principalSet://iam.googleapis.com/${local.wif_pool}/attribute.repository_ref/${local.repo}:refs/heads/main"
 }
 
+# También desde develop, para deploy-dev.yml. Decisión consciente (coste 0): la
+# misma identidad que producción, así que un push a develop podría desplegar
+# sobre app. Aislarlo pide otra SA, otro bucket de estado y otro secreto.
+resource "google_service_account_iam_member" "gh_deployer_wif_develop" {
+  service_account_id = google_service_account.gh_deployer.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${local.wif_pool}/attribute.repository_ref/${local.repo}:refs/heads/develop"
+}
+
 # ---------- app-runtime ----------
 
 # Lee el secreto de configuración. secretAccessor sobre el secreto concreto,

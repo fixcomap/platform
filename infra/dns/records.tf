@@ -11,3 +11,13 @@ resource "cloudflare_dns_record" "app" {
   proxied = false
   comment = "Cloud Run domain mapping (OpenTofu, infra/dns)"
 }
+
+resource "cloudflare_dns_record" "app_dev" {
+  zone_id = var.cloudflare_zone_id
+  name    = var.dev_hostname
+  type    = "CNAME"
+  content = "ghs.googlehosted.com"
+  ttl     = 300
+  proxied = false
+  comment = "Cloud Run domain mapping de desarrollo (OpenTofu, infra/dns)"
+}

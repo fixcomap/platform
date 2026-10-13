@@ -40,6 +40,11 @@ func loadConfig() (Config, error) {
 	if c.GoogleClientID == "" || c.GoogleClientSecret == "" || c.BaseURL == "" || len(c.SessionKey) < 32 {
 		return c, errors.New("APP_CONFIG incompleto: google_client_id, google_client_secret, base_url y session_key (>= 32)")
 	}
+	// APP_BASE_URL (sin secreto) permite que desarrollo reutilice app-config
+	// con su propio hostname; el cliente OAuth admite las dos redirect URIs.
+	if b := os.Getenv("APP_BASE_URL"); b != "" {
+		c.BaseURL = b
+	}
 	c.BaseURL = strings.TrimRight(c.BaseURL, "/")
 	for i, a := range c.Admins {
 		c.Admins[i] = normEmail(a)

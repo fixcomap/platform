@@ -54,6 +54,14 @@ resource "google_cloud_run_v2_service" "app" {
         value = var.image
       }
 
+      dynamic "env" {
+        for_each = { for k, v in { DB_NAME = var.db_name, APP_BASE_URL = var.base_url } : k => v if v != "" }
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
       # Secreto de L1 como variable de entorno. app-runtime tiene secretAccessor
       # sobre él (L1); si no, Cloud Run rechaza la revisión.
       env {
@@ -85,7 +93,7 @@ resource "google_cloud_run_v2_service" "app" {
 
       env {
         name  = "OTEL_RESOURCE_ATTRIBUTES"
-        value = "deployment.environment=production,cloud.provider=gcp,cloud.region=${var.region},service.version=${var.image}"
+        value = "deployment.environment=${var.environment},cloud.provider=gcp,cloud.region=${var.region},service.version=${var.image}"
       }
 
       # Token de Grafana Cloud como cabecera; app-runtime tiene secretAccessor (L1).

@@ -3,6 +3,12 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "dev_hostname" {
+  description = "Hostname de desarrollo (servicio app-dev)."
+  type        = string
+  default     = "dev.fixcomap.com"
+}
+
 variable "app_hostname" {
   description = "Hostname del servicio Cloud Run. www y el apex quedan libres para la landing."
   type        = string
