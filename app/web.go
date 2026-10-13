@@ -37,6 +37,32 @@ var funcs = template.FuncMap{
 		return [...]string{"dom", "lun", "mar", "mié", "jue", "vie", "sáb"}[t.Weekday()]
 	},
 	"iso": func(t time.Time) string { return t.Format("2006-01-02") },
+	// Símbolo corto de cada estado: cabe en el móvil al lado del nombre.
+	"symbol": func(s Status) string {
+		return map[Status]string{Presente: "✓", Lesionado: "L", Justificado: "J", Injustificado: "✗"}[s]
+	},
+	"statusLabel": func(s Status) string {
+		return map[Status]string{Presente: "Vino", Lesionado: "Lesionado", Justificado: "Justificada",
+			Injustificado: "No justificada"}[s]
+	},
+	"statuses": func() []Status { return statuses },
+}
+
+// withCycle rellena Player.Cycle con una marca por entreno del ciclo.
+func withCycle(ps []Player, ts []Training, marks map[int64]map[int64]Status) {
+	for i := range ps {
+		ps[i].Cycle = make([]Mark, len(ts))
+		for j, t := range ts {
+			ps[i].Cycle[j] = Mark{Day: t.Day, Status: marks[ps[i].ID][t.ID]}
+		}
+	}
+}
+
+// cycleInfo describe el ciclo para la cabecera de la lista.
+type cycleInfo struct {
+	Since     time.Time
+	FromMatch bool
+	Trainings int
 }
 
 type app struct {
@@ -243,7 +269,17 @@ func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	a.render(w, r, "players", view{Team: &t, Tab: "players", Title: "Jugadores", Data: ps})
+	now := time.Now().In(madrid)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	since, fromMatch, ts, marks, err := a.st.cycle(r.Context(), t.ID, today, true)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	withCycle(ps, ts, marks)
+	a.render(w, r, "players", view{Team: &t, Tab: "players", Title: "Jugadores", Data: map[string]any{
+		"Players": ps, "Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)},
+	}})
 }
 
 func (a *app) playerPage(w http.ResponseWriter, r *http.Request, t Team) {
@@ -322,9 +358,8 @@ func (a *app) createTraining(w http.ResponseWriter, r *http.Request, t Team) {
 }
 
 type attendanceRow struct {
-	Player  Player
-	Present bool
-	Marked  bool
+	Player Player
+	Status Status
 }
 
 func (a *app) trainingPage(w http.ResponseWriter, r *http.Request, t Team) {
@@ -350,8 +385,12 @@ func (a *app) trainingPage(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	rows := make([]attendanceRow, len(ps))
 	for i, p := range ps {
-		present, marked := att[p.ID]
-		rows[i] = attendanceRow{Player: p, Present: present, Marked: marked}
+		// Sin marca previa se propone "no justificada": se toca solo a los que vienen.
+		st, ok := att[p.ID]
+		if !ok {
+			st = Injustificado
+		}
+		rows[i] = attendanceRow{Player: p, Status: st}
 	}
 	a.render(w, r, "training", view{Team: &t, Tab: "trainings", Title: "Entreno " + tr.Day.Format("02/01"),
 		Data: map[string]any{"Training": tr, "Rows": rows, "Saved": len(att) > 0}})
@@ -367,13 +406,21 @@ func (a *app) saveAttendance(w http.ResponseWriter, r *http.Request, t Team) {
 		http.Error(w, "formulario inválido", http.StatusBadRequest)
 		return
 	}
-	present := map[int64]bool{}
-	for _, v := range r.PostForm["present"] {
-		if pid, err := strconv.ParseInt(v, 10, 64); err == nil {
-			present[pid] = true
+	// Un campo por jugador: st_<id>=presente|lesionado|justificado|injustificado.
+	status := map[int64]Status{}
+	for k, v := range r.PostForm {
+		pidStr, ok := strings.CutPrefix(k, "st_")
+		if !ok || len(v) == 0 {
+			continue
 		}
+		pid, err := strconv.ParseInt(pidStr, 10, 64)
+		if err != nil || !validStatus(Status(v[0])) {
+			http.Error(w, "estado inválido", http.StatusBadRequest)
+			return
+		}
+		status[pid] = Status(v[0])
 	}
-	if err := a.st.saveAttendance(r.Context(), t.ID, id, strings.TrimSpace(r.PostFormValue("notes")), present); err != nil {
+	if err := a.st.saveAttendance(r.Context(), t.ID, id, strings.TrimSpace(r.PostFormValue("notes")), status); err != nil {
 		a.fail(w, r, err)
 		return
 	}
@@ -447,6 +494,14 @@ func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
 		called[p.ID] = true
 		names[i] = p.DisplayName()
 	}
+	// Asistencia del ciclo previo a este partido: es lo que se mira al convocar.
+	since, fromMatch, ts, marks, err := a.st.cycle(r.Context(), t.ID, c.Day, false)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	withCycle(all, ts, marks)
+	withCycle(in, ts, marks)
 	var available []Player
 	for _, p := range all {
 		if !called[p.ID] {
@@ -455,7 +510,8 @@ func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	// Los nombres y el layout van al canvas: html/template los serializa como
 	// JSON escapado al usarlos dentro de <script>.
-	data := map[string]any{"Callup": c, "In": in, "Available": available}
+	data := map[string]any{"Callup": c, "In": in, "Available": available,
+		"Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)}}
 	if l, at, err := a.layout(r, t.ID); err == nil {
 		data["Layout"] = l
 		data["TemplateVersion"] = at.Unix()

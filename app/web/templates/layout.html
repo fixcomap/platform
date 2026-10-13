@@ -29,3 +29,8 @@
 </main>
 </body>
 </html>
+
+{{/* Entrenos del ciclo de un jugador: un chip por entreno (día + estado). */}}
+{{define "cycle"}}{{if .}}<div class="cycle">{{range .}}<span class="chip {{.Status}}" title="{{weekday .Day}} {{date .Day}}: {{if .Status}}{{statusLabel .Status}}{{else}}sin lista{{end}}">{{weekday .Day}} {{.Day.Day}} {{if .Status}}{{symbol .Status}}{{else}}·{{end}}</span>{{end}}</div>{{end}}{{end}}
+
+{{define "cycleHead"}}<p class="sub">{{if .FromMatch}}Entrenos desde el partido del {{date .Since}}{{else}}Entrenos de los últimos 14 días (sin partido previo){{end}}{{if not .Trainings}}: ninguno todavía{{end}}. ✓ vino · L lesionado · J justificada · ✗ no justificada</p>{{end}}
