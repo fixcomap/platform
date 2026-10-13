@@ -57,7 +57,7 @@ variable "enable_domain_mapping" {
 # ---------- desarrollo ----------
 # Servicio app-dev, creado en L2 por deploy-dev.yml en cada push a develop.
 # Mismo arranque en dos pasos que producción: dev_public y el domain mapping
-# en false hasta que exista el servicio.
+# en false hasta que exista el servicio (ya existe desde 0.12.0).
 
 variable "dev_service_name" {
   type    = string
@@ -73,13 +73,13 @@ variable "dev_hostname" {
 variable "dev_public" {
   description = "run.invoker a allUsers sobre app-dev. false hasta que L2 lo haya creado."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_dev_domain_mapping" {
   description = "Domain mapping de dev_hostname. false hasta que exista app-dev."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "github_org" {
