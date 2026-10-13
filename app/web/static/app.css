@@ -96,7 +96,7 @@ table.roles { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
 table.roles th { font-size: 13px; color: var(--muted); font-weight: 600; }
 table.roles th, table.roles td { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: center; }
 table.roles td:first-child { text-align: left; }
-table.roles input { width: 22px; height: 22px; accent-color: var(--accent); }
+table.roles input[type=radio], table.roles input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); }
 select { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
 .field select { width: 100%; padding: 10px; }
 input[type=time] { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
@@ -105,3 +105,27 @@ input[type=time] { width: 100%; padding: 10px; border: 1px solid var(--line); bo
 .check-inline { display: flex; align-items: center; gap: 8px; }
 .check-inline input { width: 20px; height: 20px; accent-color: var(--accent); }
 input.games { width: 56px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
+.goals { margin-left: 4px; font-size: 13px; }
+ol.scorers { margin: 10px 0 0; padding-left: 22px; }
+ol.scorers li { padding: 4px 0; }
+ol.scorers li span { display: inline-block; min-width: 60%; }
+.notes { white-space: pre-wrap; }
+
+/* Goles y tarjetas: una tarjeta por jugador, controles grandes para el dedo. */
+ul.stats { list-style: none; margin: 0 0 12px; padding: 0; }
+ul.stats li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.stats-name { font-weight: 600; margin-bottom: 6px; }
+.stats-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+.ctl { display: flex; flex-direction: column; gap: 4px; }
+.ctl > span:first-child { font-size: 12px; color: var(--muted); }
+.stepper { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.stepper button { width: 38px; padding: 8px 0; border: 0; border-radius: 0; background: var(--card); color: var(--accent); font-size: 18px; font-weight: 700; }
+.stepper input { width: 40px; border: 0; border-left: 1px solid var(--line); border-right: 1px solid var(--line); border-radius: 0;
+  text-align: center; font-weight: 700; background: var(--card); color: var(--fg); -moz-appearance: textfield; appearance: textfield; padding: 8px 0; }
+.stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.seg.yellow input:checked + span { color: #000; background: #f5c518; }
+.redbox { display: flex; align-items: center; height: 38px; }
+.redbox input { width: 24px; height: 24px; accent-color: #d93025; }
+/* Partidos de sanción solo con roja marcada. */
+.ctl.redgames { display: none; }
+.ctl:has(.redbox input:checked) + .ctl.redgames { display: flex; }
