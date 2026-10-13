@@ -19,6 +19,8 @@
 </details>
 
 <h2 id="lista">Convocados ({{len .Data.In}})</h2>
+{{/* Solo aviso: en un amistoso puede haber más. */}}
+{{if gt (len .Data.In) 18}}<p class="warn">Recuerda que la federación solo permite 18 jugadores por partido.</p>{{end}}
 {{template "cycleHead" .Data.Cycle}}
 {{if .Data.In}}
 <ul class="list">

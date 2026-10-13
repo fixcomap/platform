@@ -223,6 +223,13 @@ func TestFlow(t *testing.T) {
 	do("POST", base+"/players", url.Values{"first_name": {"Cristóbal"}, "nickname": {"Cristo"}, "number": {"1"}}, 303)
 	do("POST", base+"/players", url.Values{"first_name": {"Álvaro"}, "number": {"2"}}, 303)
 	do("POST", base+"/players", url.Values{"first_name": {""}}, 400)
+	tpl, _ := parsePages()
+	var buf strings.Builder
+	many := make([]Player, 19)
+	if err := tpl["callup"].Execute(&buf, view{Team: &Team{ID: 1}, Data: map[string]any{"Callup": Callup{}, "In": many,
+		"Cycle": cycleInfo{}}}); err != nil || !strings.Contains(buf.String(), "solo permite 18") {
+		t.Fatalf("aviso de 18 convocados: %v", err)
+	}
 	do("GET", base+"/players", nil, 200)
 
 	ps, err := a.st.players(context.Background(), mustID(t, base), true)
