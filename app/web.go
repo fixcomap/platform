@@ -46,7 +46,7 @@ var funcs = template.FuncMap{
 		return map[Status]string{Presente: "Vino", Tarde: "Llegó tarde", Lesionado: "Lesionado", Justificado: "Justificada",
 			Injustificado: "No justificada"}[s]
 	},
-	"statuses": func() []Status { return statuses },
+	"statuses":   func() []Status { return statuses },
 	"lateAlert":  func() int { return lateAlert },
 	"lateWindow": func() int { return lateWindow },
 }
