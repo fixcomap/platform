@@ -4,12 +4,13 @@
 {{with $c.Place}}<p class="sub">{{.}}</p>{{end}}
 
 <h2 id="lista">Convocados ({{len .Data.In}})</h2>
+{{template "cycleHead" .Data.Cycle}}
 {{if .Data.In}}
 <ul class="list">
   {{range .Data.In}}
   <li>
     <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
-    <span class="grow">{{.DisplayName}}</span>
+    <span class="grow">{{.DisplayName}}{{template "cycle" .Cycle}}</span>
     <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/remove"><input type="hidden" name="player" value="{{.ID}}"><button class="danger small">Quitar</button></form>
   </li>
   {{end}}
@@ -40,7 +41,7 @@
   {{range .Data.Available}}
   <li>
     <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
-    <span class="grow">{{.DisplayName}}{{if .Trainings}} <span class="sub">{{.Percent}}% asist.</span>{{end}}</span>
+    <span class="grow">{{.DisplayName}}{{if .Trainings}} <span class="sub">{{.Percent}}% asist.</span>{{end}}{{template "cycle" .Cycle}}</span>
     <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/add"><input type="hidden" name="player" value="{{.ID}}"><button class="small">Añadir</button></form>
   </li>
   {{end}}

@@ -1,14 +1,16 @@
 {{define "content"}}
 {{$t := .Team}}
-{{if .Data}}
+{{if .Data.Players}}
+{{template "cycleHead" .Data.Cycle}}
 <ul class="list">
-  {{range .Data}}
+  {{range .Data.Players}}
   <li {{if not .Active}}class="off"{{end}}>
     <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
     <a class="grow" href="/t/{{$t.ID}}/players/{{.ID}}">
       {{.DisplayName}}<div class="sub">{{.FirstName}} {{.LastName}}{{if not .Active}} · baja{{end}}</div>
+      {{if .Active}}{{template "cycle" .Cycle}}{{end}}
     </a>
-    {{if .Trainings}}<span class="sub">{{.Percent}}% <small>({{.Attended}}/{{.Trainings}})</small></span>{{end}}
+    {{if .Trainings}}<span class="sub stat">{{.Percent}}%<small> {{.Attended}}/{{.Trainings}}{{if .Injured}} · {{.Injured}}L{{end}}{{if .Justified}} · {{.Justified}}J{{end}}</small></span>{{end}}
   </li>
   {{end}}
 </ul>

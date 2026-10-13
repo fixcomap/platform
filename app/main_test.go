@@ -230,16 +230,34 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("players: %v %d", err, len(ps))
 	}
 
-	tr := do("POST", base+"/trainings", url.Values{"day": {"2026-10-13"}}, 303).Header().Get("Location")
+	// Ciclo: partido el 10/10; entrenos el 6 (ciclo anterior), 14 y 17 (este).
+	do("POST", base+"/callups", url.Values{"day": {"2026-10-10"}}, 303)
+	tr := do("POST", base+"/trainings", url.Values{"day": {"2026-10-14"}}, 303).Header().Get("Location")
 	do("GET", tr, nil, 200)
-	do("POST", tr, url.Values{"present": {itoa(ps[0].ID)}, "notes": {"lluvia"}}, 303)
+	do("POST", tr, url.Values{"st_" + itoa(ps[0].ID): {"presente"}, "st_" + itoa(ps[1].ID): {"lesionado"},
+		"notes": {"lluvia"}}, 303)
+	do("POST", tr, url.Values{"st_" + itoa(ps[0].ID): {"vino"}}, 400)
+	tr2 := do("POST", base+"/trainings", url.Values{"day": {"2026-10-17"}}, 303).Header().Get("Location")
+	do("POST", tr2, url.Values{"st_" + itoa(ps[0].ID): {"justificado"}}, 303) // ps[1] sin marcar → no justificada
+	old := do("POST", base+"/trainings", url.Values{"day": {"2026-10-06"}}, 303).Header().Get("Location")
+	do("POST", old, url.Values{"st_" + itoa(ps[0].ID): {"presente"}}, 303)
+
 	body := do("GET", base+"/players", nil, 200).Body.String()
-	if !strings.Contains(body, "100%") || !strings.Contains(body, "0%") {
-		t.Fatalf("porcentajes no aparecen:\n%s", body)
+	// Todo cuenta como falta: ps[0] vino 2 de 3 (67%), ps[1] 0 de 3 con 1 lesión.
+	if !strings.Contains(body, "66%") || !strings.Contains(body, "0%") || !strings.Contains(body, "1L") {
+		t.Fatalf("porcentajes/estados no aparecen:\n%s", body)
 	}
 	do("GET", base+"/trainings", nil, 200)
 
 	cu := do("POST", base+"/callups", url.Values{"day": {"2026-10-18"}, "rival": {"Nerja"}}, 303).Header().Get("Location")
+	since, fromMatch, ts, marks, err := a.st.cycle(context.Background(), mustID(t, base), mustDay(t, "2026-10-18"), false)
+	if err != nil || !fromMatch || since.Format("2006-01-02") != "2026-10-10" || len(ts) != 2 {
+		t.Fatalf("ciclo: %v %v %v %d", err, fromMatch, since, len(ts))
+	}
+	if marks[ps[0].ID][ts[0].ID] != Presente || marks[ps[0].ID][ts[1].ID] != Justificado ||
+		marks[ps[1].ID][ts[0].ID] != Lesionado || marks[ps[1].ID][ts[1].ID] != Injustificado {
+		t.Fatalf("marcas del ciclo: %+v", marks)
+	}
 	do("POST", cu+"/add", url.Values{"player": {itoa(ps[1].ID)}}, 303)
 	do("POST", cu+"/add", url.Values{"player": {itoa(ps[0].ID)}}, 303)
 	do("POST", cu+"/add", url.Values{"player": {itoa(ps[0].ID)}}, 303) // idempotente
@@ -300,6 +318,15 @@ func mustID(t *testing.T, path string) int64 {
 		t.Fatalf("id de %q: %v", path, err)
 	}
 	return id
+}
+
+func mustDay(t *testing.T, s string) time.Time {
+	t.Helper()
+	d, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
 }
 
 func mustJSON(t *testing.T, v any) []byte {

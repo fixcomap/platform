@@ -105,7 +105,38 @@ type Player struct {
 	Number    sql.NullInt64
 	Active    bool
 	// Solo en listados con estadística.
-	Attended, Trainings int
+	Attended, Trainings, Injured, Justified int
+	// Entrenos del ciclo (desde el último partido); solo donde se muestra.
+	Cycle []Mark
+}
+
+// Status de asistencia. Para el porcentaje, cualquier ausencia es falta:
+// lesionado y justificado solo explican el motivo.
+type Status string
+
+const (
+	Presente      Status = "presente"
+	Lesionado     Status = "lesionado"
+	Justificado   Status = "justificado"
+	Injustificado Status = "injustificado"
+)
+
+var statuses = []Status{Presente, Lesionado, Justificado, Injustificado}
+
+func validStatus(s Status) bool {
+	for _, v := range statuses {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// Mark es la asistencia de un jugador a un entreno del ciclo. Sin marca
+// (Status vacío) = no se pasó lista con él en el equipo.
+type Mark struct {
+	Day    time.Time
+	Status Status
 }
 
 // DisplayName es el nombre que va en la lista y en la imagen: el apodo si lo
@@ -232,7 +263,9 @@ func (s store) removeCoach(ctx context.Context, teamID int64, email string) erro
 func (s store) players(ctx context.Context, teamID int64, onlyActive bool) ([]Player, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active,
-		       count(a.*) FILTER (WHERE a.present), count(a.*)
+		       count(a.*) FILTER (WHERE a.status = 'presente'), count(a.*),
+		       count(a.*) FILTER (WHERE a.status = 'lesionado'),
+		       count(a.*) FILTER (WHERE a.status = 'justificado')
 		FROM players p LEFT JOIN attendance a ON a.player_id = p.id
 		WHERE p.team_id = $1 AND (p.active OR NOT $2)
 		GROUP BY p.id
@@ -245,7 +278,7 @@ func (s store) players(ctx context.Context, teamID int64, onlyActive bool) ([]Pl
 	for rows.Next() {
 		var p Player
 		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active,
-			&p.Attended, &p.Trainings); err != nil {
+			&p.Attended, &p.Trainings, &p.Injured, &p.Justified); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -275,7 +308,7 @@ func (s store) savePlayer(ctx context.Context, teamID int64, p Player) error {
 
 func (s store) trainings(ctx context.Context, teamID int64) ([]Training, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT t.id, t.day, t.notes, count(a.*) FILTER (WHERE a.present), count(a.*)
+		SELECT t.id, t.day, t.notes, count(a.*) FILTER (WHERE a.status = 'presente'), count(a.*)
 		FROM trainings t LEFT JOIN attendance a ON a.training_id = t.id
 		WHERE t.team_id = $1 GROUP BY t.id ORDER BY t.day DESC, t.id DESC`, teamID)
 	if err != nil {
@@ -312,28 +345,28 @@ func (s store) deleteTraining(ctx context.Context, teamID, id int64) error {
 	return err
 }
 
-// attendance: player_id -> present, solo para los que ya tienen marca.
-func (s store) attendance(ctx context.Context, trainingID int64) (map[int64]bool, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT player_id, present FROM attendance WHERE training_id = $1", trainingID)
+// attendance: player_id -> estado, solo para los que ya tienen marca.
+func (s store) attendance(ctx context.Context, trainingID int64) (map[int64]Status, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT player_id, status FROM attendance WHERE training_id = $1", trainingID)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	out := map[int64]bool{}
+	out := map[int64]Status{}
 	for rows.Next() {
 		var id int64
-		var present bool
-		if err := rows.Scan(&id, &present); err != nil {
+		var st Status
+		if err := rows.Scan(&id, &st); err != nil {
 			return nil, err
 		}
-		out[id] = present
+		out[id] = st
 	}
 	return out, rows.Err()
 }
 
-// saveAttendance guarda la lista completa: los activos marcados vinieron, el
-// resto no. Así "no vino" queda registrado y cuenta en el porcentaje.
-func (s store) saveAttendance(ctx context.Context, teamID, trainingID int64, notes string, present map[int64]bool) error {
+// saveAttendance guarda la lista completa: cada activo con su estado y, si no
+// llega ninguno, ausencia no justificada. Así toda falta queda registrada.
+func (s store) saveAttendance(ctx context.Context, teamID, trainingID int64, notes string, status map[int64]Status) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -365,13 +398,69 @@ func (s store) saveAttendance(ctx context.Context, teamID, trainingID int64, not
 		return err
 	}
 	for _, id := range ids {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO attendance (training_id, player_id, present)
-			VALUES ($1, $2, $3) ON CONFLICT (training_id, player_id) DO UPDATE SET present = EXCLUDED.present`,
-			trainingID, id, present[id]); err != nil {
+		st := status[id]
+		if !validStatus(st) {
+			st = Injustificado
+		}
+		// present se sigue escribiendo mientras exista (ver migración 002).
+		if _, err := tx.ExecContext(ctx, `INSERT INTO attendance (training_id, player_id, status, present)
+			VALUES ($1, $2, $3, $4) ON CONFLICT (training_id, player_id)
+			DO UPDATE SET status = EXCLUDED.status, present = EXCLUDED.present`,
+			trainingID, id, st, st == Presente); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// cycle devuelve los entrenos del ciclo que acaba en end y las marcas de cada
+// jugador. El ciclo empieza tras el último partido (convocatoria) anterior a
+// end: con una fecha libre no hay convocatoria y el ciclo abarca las dos
+// semanas. Sin partidos previos, los últimos 14 días. includeEnd: el día end
+// cuenta (hoy en Jugadores; el día del partido no).
+func (s store) cycle(ctx context.Context, teamID int64, end time.Time, includeEnd bool) (time.Time, bool, []Training, map[int64]map[int64]Status, error) {
+	var last sql.NullTime
+	if err := s.db.QueryRowContext(ctx, "SELECT max(day) FROM callups WHERE team_id = $1 AND day < $2",
+		teamID, end).Scan(&last); err != nil {
+		return time.Time{}, false, nil, nil, err
+	}
+	start := end.AddDate(0, 0, -14)
+	if last.Valid {
+		start = last.Time
+	}
+	cmp := "<"
+	if includeEnd {
+		cmp = "<="
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT t.id, t.day, a.player_id, a.status
+		FROM trainings t LEFT JOIN attendance a ON a.training_id = t.id
+		WHERE t.team_id = $1 AND t.day > $2 AND t.day `+cmp+` $3
+		ORDER BY t.day, t.id`, teamID, start, end)
+	if err != nil {
+		return time.Time{}, false, nil, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ts []Training
+	marks := map[int64]map[int64]Status{} // player -> training -> estado
+	for rows.Next() {
+		var tid int64
+		var day time.Time
+		var pid sql.NullInt64
+		var st sql.NullString
+		if err := rows.Scan(&tid, &day, &pid, &st); err != nil {
+			return time.Time{}, false, nil, nil, err
+		}
+		if len(ts) == 0 || ts[len(ts)-1].ID != tid {
+			ts = append(ts, Training{ID: tid, Day: day})
+		}
+		if pid.Valid {
+			if marks[pid.Int64] == nil {
+				marks[pid.Int64] = map[int64]Status{}
+			}
+			marks[pid.Int64][tid] = Status(st.String)
+		}
+	}
+	return start, last.Valid, ts, marks, rows.Err()
 }
 
 func (s store) callups(ctx context.Context, teamID int64) ([]Callup, error) {
