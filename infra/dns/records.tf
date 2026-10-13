@@ -2,9 +2,16 @@
 # de nada de L2, así que puede existir antes que el domain mapping (mientras
 # tanto Google responde 404). Sin proxy naranja: Google necesita resolver el
 # CNAME real para emitir el certificado gestionado.
+moved {
+  from = cloudflare_dns_record.app
+  to   = cloudflare_dns_record.app["app.fixcomap.com"]
+}
+
 resource "cloudflare_dns_record" "app" {
+  for_each = var.app_hostnames
+
   zone_id = var.cloudflare_zone_id
-  name    = var.app_hostname
+  name    = each.value
   type    = "CNAME"
   content = "ghs.googlehosted.com"
   ttl     = 300

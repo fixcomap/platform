@@ -39,10 +39,13 @@ variable "app_public" {
   default     = true
 }
 
-variable "app_hostname" {
-  description = "Hostname del servicio; debe coincidir con el CNAME de infra/dns. www y el apex quedan libres."
-  type        = string
-  default     = "app.fixcomap.com"
+variable "app_hostnames" {
+  description = <<-EOT
+    Hostnames de producción; deben coincidir con los CNAME de infra/dns. El
+    principal lo fija base_url en infra/app; el resto redirigen (301) a él.
+  EOT
+  type        = set(string)
+  default     = ["app.fixcomap.com", "plantilla.fixcomap.com"]
 }
 
 variable "enable_domain_mapping" {

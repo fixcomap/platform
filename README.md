@@ -350,7 +350,7 @@ Arranque (una vez):
 
 ## Disponibilidad
 
-Uptime checks de Cloud Monitoring (`infra/app/monitoring.tf`): HTTPS a `https://app.fixcomap.com/health`
+Uptime checks de Cloud Monitoring (`infra/app/monitoring.tf`): HTTPS a `https://plantilla.fixcomap.com/health`
 y a `https://fixcomap.com/` (la landing no vive en GCP, pero la sonda y la alerta sí) cada 5 min desde
 3 regiones, con alerta por email a `billing@fixcomap.com` si falla desde más de una región durante 5 min
 (se cierra sola al recuperarse). Free tier: 1M ejecuciones/mes (uso ~52k), alertas y email sin coste. Cloud Monitoring no verifica el email: comprobar que llega la primera notificación
