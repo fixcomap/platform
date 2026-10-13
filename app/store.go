@@ -153,13 +153,6 @@ func (s store) canAccess(ctx context.Context, email string, admin bool, teamID i
 	return ok, err
 }
 
-func (s store) hasAnyTeam(ctx context.Context, email string) (bool, error) {
-	var ok bool
-	err := s.db.QueryRowContext(ctx,
-		"SELECT EXISTS (SELECT 1 FROM team_coaches WHERE email = $1)", email).Scan(&ok)
-	return ok, err
-}
-
 func (s store) teams(ctx context.Context, email string, admin bool) ([]Team, error) {
 	q := `SELECT t.id, t.name FROM teams t JOIN team_coaches c ON c.team_id = t.id
 	      WHERE c.email = $1 ORDER BY t.name`
