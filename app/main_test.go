@@ -249,6 +249,15 @@ func TestFlow(t *testing.T) {
 	old := do("POST", base+"/trainings", url.Values{"day": {"2026-10-06"}}, 303).Header().Get("Location")
 	do("POST", old, url.Values{"st_" + itoa(ps[0].ID): {"presente"}}, 303)
 
+	// Racha: ps[1] faltó el 6 y el 17 (no justificada) con una lesión el 14 en
+	// medio, que ni corta ni suma → 2 seguidas. ps[0] vino el 14 → 1 (el 17 J).
+	if st, _ := a.st.absenceStreaks(context.Background(), mustID(t, base)); st[ps[1].ID] != 2 || st[ps[0].ID] != 1 {
+		t.Fatalf("rachas: %v", st)
+	}
+	if !strings.Contains(do("GET", base+"/players", nil, 200).Body.String(), "2 faltas seguidas") {
+		t.Fatal("falta el aviso de 2 faltas seguidas")
+	}
+
 	body := do("GET", base+"/players", nil, 200).Body.String()
 	// Todo cuenta como falta: ps[0] vino 2 de 3 (67%), ps[1] 0 de 3 con 1 lesión.
 	if !strings.Contains(body, "66%") || !strings.Contains(body, "0%") || !strings.Contains(body, "1L") {

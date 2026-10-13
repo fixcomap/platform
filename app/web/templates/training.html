@@ -8,7 +8,7 @@
     {{range .Data.Rows}}{{$p := .Player}}{{$st := .Status}}
     <li>
       <span class="num">{{if $p.Number.Valid}}{{$p.Number.Int64}}{{end}}</span>
-      <span class="grow">{{$p.DisplayName}} <span class="sub">{{$p.FirstName}} {{$p.LastName}}</span></span>
+      <span class="grow">{{$p.DisplayName}} {{if ge $p.Streak 2}}<span class="badge warnb" title="sin contar lesiones">{{$p.Streak}} faltas seguidas</span>{{end}} <span class="sub">{{$p.FirstName}} {{$p.LastName}}</span></span>
       <span class="seg" role="radiogroup" aria-label="Asistencia de {{$p.DisplayName}}">
         {{range statuses}}<label class="{{.}}" title="{{statusLabel .}}"><input type="radio" name="st_{{$p.ID}}" value="{{.}}" {{if eq . $st}}checked{{end}}><span>{{symbol .}}</span></label>{{end}}
       </span>

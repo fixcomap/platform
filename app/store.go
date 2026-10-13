@@ -117,6 +117,8 @@ type Player struct {
 	// amarillas del ciclo acumuladas antes de él (4 = apercibido).
 	Suspension   string
 	CycleYellows int
+	// Faltas seguidas más recientes sin contar lesiones (2+ = aviso).
+	Streak int
 }
 
 // Status de asistencia. Para el porcentaje, cualquier ausencia es falta:
@@ -335,6 +337,48 @@ func (s store) players(ctx context.Context, teamID int64, onlyActive bool) ([]Pl
 			return nil, err
 		}
 		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	streaks, err := s.absenceStreaks(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].Streak = streaks[out[i].ID]
+	}
+	return out, nil
+}
+
+// absenceStreaks cuenta, por jugador, las ausencias seguidas desde su último
+// entreno presente. Una lesión no corta la racha ni suma: es un motivo ajeno a
+// su compromiso y no debe disparar el aviso.
+func (s store) absenceStreaks(ctx context.Context, teamID int64) (map[int64]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT a.player_id, a.status
+		FROM attendance a JOIN trainings t ON t.id = a.training_id
+		WHERE t.team_id = $1 AND a.status <> 'lesionado'
+		ORDER BY a.player_id, t.day DESC, t.id DESC`, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[int64]int{}
+	done := map[int64]bool{}
+	for rows.Next() {
+		var pid int64
+		var st Status
+		if err := rows.Scan(&pid, &st); err != nil {
+			return nil, err
+		}
+		if done[pid] {
+			continue
+		}
+		if st == Presente {
+			done[pid] = true
+			continue
+		}
+		out[pid]++
 	}
 	return out, rows.Err()
 }
