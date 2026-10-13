@@ -53,4 +53,8 @@
   </label>
 </div>
 <label class="field"><span>Lugar / campo</span><input type="text" name="place" value="{{.Place}}"></label>
+<label class="field check-inline"><input type="checkbox" name="friendly" value="1" {{if .Friendly}}checked{{end}}> Amistoso (no cuenta tarjetas ni sanciones)</label>
 {{end}}
+
+{{/* Disciplina de un jugador: sancionado o apercibido (a una amarilla del ciclo). */}}
+{{define "discipline"}}{{if .Suspension}}<span class="badge bad" title="Sancionado: {{.Suspension}}">Sancionado · {{.Suspension}}</span>{{else if eq .CycleYellows 4}}<span class="badge warnb" title="4 amarillas: con la próxima, sanción">Apercibido</span>{{end}}{{end}}

@@ -293,6 +293,16 @@ func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	withCycle(ps, ts, marks)
+	// En Jugadores: sanción para el próximo partido y amarillas de la temporada.
+	disc, err := a.st.discipline(r.Context(), t.ID, now)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	for i := range ps {
+		ps[i].Suspension = disc.Next[ps[i].ID]
+		ps[i].CycleYellows = disc.Yellows[ps[i].ID]
+	}
 	a.render(w, r, "players", view{Team: &t, Tab: "players", Title: "Jugadores", Data: map[string]any{
 		"Players": ps, "Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)},
 	}})
@@ -486,6 +496,7 @@ func callupForm(r *http.Request) (Callup, error) {
 		}
 		*f.dst = v
 	}
+	c.Friendly = r.FormValue("friendly") != ""
 	switch r.FormValue("home") {
 	case "1":
 		c.Home = sql.NullBool{Bool: true, Valid: true}
@@ -552,6 +563,23 @@ func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	withCycle(all, ts, marks)
 	withCycle(in, ts, marks)
+	disc, err := a.st.discipline(r.Context(), t.ID, time.Now().In(madrid))
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	suspendedIn := 0
+	for _, ps := range [][]Player{all, in} {
+		for i := range ps {
+			ps[i].Suspension = disc.Suspended[c.ID][ps[i].ID]
+			ps[i].CycleYellows = disc.YellowsBefore[c.ID][ps[i].ID]
+		}
+	}
+	for _, p := range in {
+		if p.Suspension != "" {
+			suspendedIn++
+		}
+	}
 	var available []Player
 	for _, p := range all {
 		if !called[p.ID] {
@@ -563,7 +591,8 @@ func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
 	data := map[string]any{"Callup": c, "In": in, "Available": available,
 		"Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)},
 		// La imagen solo se genera con capitán y al menos un portero marcados.
-		"RolesReady": c.Captain.Valid && goalkeepers > 0, "Info": callupInfo(t, c)}
+		"RolesReady": c.Captain.Valid && goalkeepers > 0, "Info": callupInfo(t, c),
+		"SuspendedIn": suspendedIn}
 	if l, at, err := a.layout(r, t.ID); err == nil {
 		data["Layout"] = l
 		data["TemplateVersion"] = at.Unix()
@@ -684,7 +713,11 @@ func (a *app) callupCards(w http.ResponseWriter, r *http.Request, t Team) {
 		if err != nil || y < 0 || y > 2 {
 			y = 0
 		}
-		if err := a.st.setCards(r.Context(), t.ID, id, p.ID, y, r.FormValue("r_"+pid) != ""); err != nil {
+		games, err := strconv.Atoi(r.FormValue("rg_" + pid))
+		if err != nil || games < 1 || games > 20 {
+			games = 1
+		}
+		if err := a.st.setCards(r.Context(), t.ID, id, p.ID, y, r.FormValue("r_"+pid) != "", games); err != nil {
 			a.fail(w, r, err)
 			return
 		}

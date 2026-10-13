@@ -111,7 +111,12 @@ type Player struct {
 	// Tarjetas y portero en un partido; solo en la lista de convocados.
 	Yellow     int
 	Red        bool
+	RedGames   int
 	Goalkeeper bool
+	// Disciplina: motivo si está sancionado para el partido que se mira y
+	// amarillas del ciclo acumuladas antes de él (4 = apercibido).
+	Suspension   string
+	CycleYellows int
 }
 
 // Status de asistencia. Para el porcentaje, cualquier ausencia es falta:
@@ -179,6 +184,7 @@ type Callup struct {
 	GoalsFor sql.NullInt64
 	GoalsAg  sql.NullInt64
 	Captain  sql.NullInt64
+	Friendly bool
 	Count    int
 }
 
@@ -211,11 +217,11 @@ func (c Callup) Score() string {
 }
 
 const callupCols = `c.id, c.day, c.rival, c.place, COALESCE(c.kickoff, ''), COALESCE(c.meet_time, ''),
-	c.home, c.goals_for, c.goals_against, c.captain_id`
+	c.home, c.goals_for, c.goals_against, c.captain_id, c.friendly`
 
 func scanCallup(sc interface{ Scan(...any) error }, c *Callup, extra ...any) error {
 	return sc.Scan(append([]any{&c.ID, &c.Day, &c.Rival, &c.Place, &c.Kickoff, &c.Meet,
-		&c.Home, &c.GoalsFor, &c.GoalsAg, &c.Captain}, extra...)...)
+		&c.Home, &c.GoalsFor, &c.GoalsAg, &c.Captain, &c.Friendly}, extra...)...)
 }
 
 type store struct{ db *sql.DB }
@@ -546,18 +552,19 @@ func nullIfEmpty(s string) any {
 
 func (s store) createCallup(ctx context.Context, teamID int64, c Callup) (int64, error) {
 	var id int64
-	err := s.db.QueryRowContext(ctx, `INSERT INTO callups (team_id, day, rival, place, kickoff, meet_time, home)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, teamID, c.Day, c.Rival, c.Place,
-		nullIfEmpty(c.Kickoff), nullIfEmpty(c.Meet), c.Home).Scan(&id)
+	err := s.db.QueryRowContext(ctx, `INSERT INTO callups (team_id, day, rival, place, kickoff, meet_time, home, friendly)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`, teamID, c.Day, c.Rival, c.Place,
+		nullIfEmpty(c.Kickoff), nullIfEmpty(c.Meet), c.Home, c.Friendly).Scan(&id)
 	return id, err
 }
 
 // updateCallup guarda datos del partido y resultado (los goles, ambos o ninguno).
 func (s store) updateCallup(ctx context.Context, teamID int64, c Callup) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE callups SET day = $3, rival = $4, place = $5, kickoff = $6,
-		meet_time = $7, home = $8, goals_for = $9, goals_against = $10 WHERE team_id = $1 AND id = $2`,
+		meet_time = $7, home = $8, goals_for = $9, goals_against = $10, friendly = $11
+		WHERE team_id = $1 AND id = $2`,
 		teamID, c.ID, c.Day, c.Rival, c.Place, nullIfEmpty(c.Kickoff), nullIfEmpty(c.Meet), c.Home,
-		c.GoalsFor, c.GoalsAg)
+		c.GoalsFor, c.GoalsAg, c.Friendly)
 	if err != nil {
 		return err
 	}
@@ -569,10 +576,10 @@ func (s store) updateCallup(ctx context.Context, teamID int64, c Callup) error {
 
 // setCards: tarjetas de un convocado; el UPDATE solo encuentra la fila si
 // convocatoria y jugador son de este equipo.
-func (s store) setCards(ctx context.Context, teamID, callupID, playerID int64, yellow int, red bool) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE callup_players cp SET yellow = $4, red = $5
+func (s store) setCards(ctx context.Context, teamID, callupID, playerID int64, yellow int, red bool, redGames int) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE callup_players cp SET yellow = $4, red = $5, red_games = $6
 		FROM callups c WHERE cp.callup_id = c.id AND c.team_id = $1 AND c.id = $2 AND cp.player_id = $3`,
-		teamID, callupID, playerID, yellow, red)
+		teamID, callupID, playerID, yellow, red, redGames)
 	return err
 }
 
@@ -584,7 +591,7 @@ func (s store) deleteCallup(ctx context.Context, teamID, id int64) error {
 // callupPlayers: convocados en el orden en que se añadieron.
 func (s store) callupPlayers(ctx context.Context, callupID int64) ([]Player, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active, cp.yellow, cp.red, cp.goalkeeper
+		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active, cp.yellow, cp.red, cp.goalkeeper, cp.red_games
 		FROM callup_players cp JOIN players p ON p.id = cp.player_id
 		WHERE cp.callup_id = $1 ORDER BY cp.position`, callupID)
 	if err != nil {
@@ -595,7 +602,7 @@ func (s store) callupPlayers(ctx context.Context, callupID int64) ([]Player, err
 	for rows.Next() {
 		var p Player
 		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active,
-			&p.Yellow, &p.Red, &p.Goalkeeper); err != nil {
+			&p.Yellow, &p.Red, &p.Goalkeeper, &p.RedGames); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

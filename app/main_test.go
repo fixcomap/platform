@@ -314,6 +314,17 @@ func TestFlow(t *testing.T) {
 		t.Fatal("la convocatoria no pinta la imagen con plantilla y roles")
 	}
 	do("GET", base+"/settings", nil, 200)
+
+	// Sanción: ps[0] vio doble amarilla el 18/10 → sancionado en el siguiente oficial.
+	next := do("POST", base+"/callups", url.Values{"day": {"2026-10-25"}}, 303).Header().Get("Location")
+	if body := do("GET", next, nil, 200).Body.String(); !strings.Contains(body, "Sancionado · doble amarilla") {
+		t.Fatal("no aparece la sanción por doble amarilla en el siguiente partido")
+	}
+	// Si el del 18/10 fue amistoso, las tarjetas no cuentan.
+	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "friendly": {"1"}}, 303)
+	if body := do("GET", next, nil, 200).Body.String(); strings.Contains(body, "Sancionado") {
+		t.Fatal("un amistoso no debería sancionar")
+	}
 	do("POST", base+"/template/layout", url.Values{"layout": {`{"columns":[2]}`}}, 400)
 	if got := do("GET", base+"/template.img", nil, 200).Header().Get("Content-Type"); got != "image/png" {
 		t.Fatalf("content-type %q", got)
