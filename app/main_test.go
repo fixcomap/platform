@@ -251,7 +251,7 @@ func TestFlow(t *testing.T) {
 
 	// Racha: ps[1] faltó el 6 y el 17 (no justificada) con una lesión el 14 en
 	// medio, que ni corta ni suma → 2 seguidas. ps[0] vino el 14 → 1 (el 17 J).
-	if st, _ := a.st.absenceStreaks(context.Background(), mustID(t, base)); st[ps[1].ID] != 2 || st[ps[0].ID] != 1 {
+	if st, _, _ := a.st.attendanceAlerts(context.Background(), mustID(t, base)); st[ps[1].ID] != 2 || st[ps[0].ID] != 1 {
 		t.Fatalf("rachas: %v", st)
 	}
 	if !strings.Contains(do("GET", base+"/players", nil, 200).Body.String(), "2 faltas seguidas") {
@@ -337,6 +337,19 @@ func TestFlow(t *testing.T) {
 	do("POST", base+"/template/layout", url.Values{"layout": {`{"columns":[2]}`}}, 400)
 	if got := do("GET", base+"/template.img", nil, 200).Header().Get("Content-Type"); got != "image/png" {
 		t.Fatalf("content-type %q", got)
+	}
+
+	// Llegadas tarde: 5 de los últimos 8 → aviso; tarde cuenta como asistencia.
+	for _, d := range []string{"2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07"} {
+		tr := do("POST", base+"/trainings", url.Values{"day": {d}}, 303).Header().Get("Location")
+		do("POST", tr, url.Values{"st_" + itoa(ps[0].ID): {"tarde"}}, 303)
+	}
+	streak, late, _ := a.st.attendanceAlerts(context.Background(), mustID(t, base))
+	if late[ps[0].ID] != 5 || streak[ps[0].ID] != 0 {
+		t.Fatalf("tardes/racha: late=%v streak=%v", late, streak)
+	}
+	if !strings.Contains(do("GET", base+"/players", nil, 200).Body.String(), "5 tardes en los últimos 8") {
+		t.Fatal("falta el aviso de llegadas tarde")
 	}
 
 	// Otro equipo sin acceso: sin admin no se ve (404).

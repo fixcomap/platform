@@ -6,6 +6,7 @@
   src: url(/static/open-sans-700-latin.woff2) format("woff2");
 }
 :root {
+  --late-bg: #ece8fb;
   --warn: #9a5b00; --warn-bg: #fdf0d9; --info: #2557a7; --info-bg: #e3ecfa; --bad-bg: #fbe6e4;
   --bg: #f6f5fb; --card: #fff; --fg: #1d1a2e; --muted: #6b6880; --line: #e3e0ef;
   --accent: #3b2f8f; --accent-fg: #fff; --ok: #1f8a4c; --ok-bg: #e3f5ea; --bad: #b3261e;
@@ -14,6 +15,7 @@
   :root {
     --bg: #14121d; --card: #1e1b2b; --fg: #ece9f7; --muted: #a29fb8; --line: #2e2a40;
     --accent: #8f82e8; --accent-fg: #14121d; --ok: #5fd08e; --ok-bg: #1d3327; --bad: #f2867d;
+    --late-bg: #26213f;
     --warn: #f0b85a; --warn-bg: #3a2c12; --info: #8db4f2; --info-bg: #17263d; --bad-bg: #3a1c1a;
   }
 }
@@ -61,6 +63,7 @@ canvas { width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--
 
 /* Estados de asistencia: mismo color en chips y selector. */
 .presente { --c: var(--ok); --cb: var(--ok-bg); }
+.tarde { --c: var(--accent); --cb: var(--late-bg); }
 .lesionado { --c: var(--warn); --cb: var(--warn-bg); }
 .justificado { --c: var(--info); --cb: var(--info-bg); }
 .injustificado { --c: var(--bad); --cb: var(--bad-bg); }
@@ -72,7 +75,7 @@ canvas { width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
 .seg label { position: relative; cursor: pointer; }
 .seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
-.seg span { display: block; width: 38px; padding: 9px 0; text-align: center; font-weight: 700; color: var(--muted); }
+.seg span { display: block; width: 34px; padding: 9px 0; text-align: center; font-weight: 700; color: var(--muted); }
 .seg label + label span { border-left: 1px solid var(--line); }
 .seg input:checked + span { color: var(--c); background: var(--cb); }
 .seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
