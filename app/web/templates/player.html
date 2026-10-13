@@ -1,0 +1,12 @@
+{{define "content"}}
+{{$p := .Data}}
+<form method="post" class="card">
+  <label class="field"><span>Nombre *</span><input type="text" name="first_name" value="{{$p.FirstName}}" required></label>
+  <label class="field"><span>Apellido</span><input type="text" name="last_name" value="{{$p.LastName}}"></label>
+  <label class="field"><span>Apodo (sale en la convocatoria)</span><input type="text" name="nickname" value="{{$p.Nickname}}"></label>
+  <label class="field"><span>Dorsal</span><input type="number" name="number" min="0" max="999" inputmode="numeric" value="{{if $p.Number.Valid}}{{$p.Number.Int64}}{{end}}"></label>
+  <label class="field check"><input type="checkbox" name="active" value="1" {{if $p.Active}}checked{{end}}> En el equipo (desmarcar = baja; se conserva su historial)</label>
+  <button>Guardar</button>
+  <a href="/t/{{.Team.ID}}/players">Cancelar</a>
+</form>
+{{end}}

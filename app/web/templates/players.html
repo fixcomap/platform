@@ -1,0 +1,31 @@
+{{define "content"}}
+{{$t := .Team}}
+{{if .Data}}
+<ul class="list">
+  {{range .Data}}
+  <li {{if not .Active}}class="off"{{end}}>
+    <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
+    <a class="grow" href="/t/{{$t.ID}}/players/{{.ID}}">
+      {{.DisplayName}}<div class="sub">{{.FirstName}} {{.LastName}}{{if not .Active}} · baja{{end}}</div>
+    </a>
+    {{if .Trainings}}<span class="sub">{{.Percent}}% <small>({{.Attended}}/{{.Trainings}})</small></span>{{end}}
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="empty">Todavía no hay jugadores.</p>
+{{end}}
+<h2>Añadir jugador</h2>
+<form method="post" action="/t/{{$t.ID}}/players" class="card">
+  <div class="row">
+    <label class="field"><span>Nombre *</span><input type="text" name="first_name" required></label>
+    <label class="field"><span>Apellido</span><input type="text" name="last_name"></label>
+  </div>
+  <div class="row">
+    <label class="field"><span>Apodo (sale en la convocatoria)</span><input type="text" name="nickname"></label>
+    <label class="field"><span>Dorsal</span><input type="number" name="number" min="0" max="999" inputmode="numeric"></label>
+  </div>
+  <input type="hidden" name="active" value="1">
+  <button>Añadir</button>
+</form>
+{{end}}
