@@ -1,5 +1,5 @@
-output "app_hostname" {
-  value = var.app_hostname
+output "app_hostnames" {
+  value = var.app_hostnames
 }
 
 output "landing_pages_subdomain" {

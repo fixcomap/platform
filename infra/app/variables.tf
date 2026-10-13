@@ -30,7 +30,7 @@ variable "app_runtime_email" {
 variable "app_hostname" {
   description = "Hostname público que sondea el uptime check; el mapping vive en L1 y el CNAME en infra/dns."
   type        = string
-  default     = "app.fixcomap.com"
+  default     = "plantilla.fixcomap.com"
 }
 
 variable "landing_hostname" {
@@ -86,9 +86,12 @@ variable "db_name" {
 }
 
 variable "base_url" {
-  description = "URL pública para el callback OAuth; vacío = base_url de app-config (producción)."
+  description = <<-EOT
+    URL pública principal (APP_BASE_URL): callback OAuth y destino de la
+    redirección del resto de hostnames. Prevalece sobre base_url de app-config.
+  EOT
   type        = string
-  default     = ""
+  default     = "https://plantilla.fixcomap.com"
 }
 
 variable "enable_monitoring" {

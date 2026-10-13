@@ -9,10 +9,10 @@ variable "dev_hostnames" {
   default     = ["dev.fixcomap.com", "plantilla.dev.fixcomap.com"]
 }
 
-variable "app_hostname" {
-  description = "Hostname del servicio Cloud Run. www y el apex quedan libres para la landing."
-  type        = string
-  default     = "app.fixcomap.com"
+variable "app_hostnames" {
+  description = "Hostnames de producción (servicio app). www y el apex quedan libres para la landing."
+  type        = set(string)
+  default     = ["app.fixcomap.com", "plantilla.fixcomap.com"]
 }
 
 variable "cloudflare_account_id" {
