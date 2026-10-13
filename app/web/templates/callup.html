@@ -1,7 +1,7 @@
 {{define "content"}}
 {{$t := .Team}}{{$c := .Data.Callup}}
 <h2>{{weekday $c.Day}} {{date $c.Day}}{{with $c.Kickoff}} · {{.}}{{end}}{{with $c.Rival}} · vs {{.}}{{end}}
-  {{if $c.Played}}<span class="pill result {{$c.Outcome}}">{{$c.Score}}</span>{{end}}</h2>
+  {{if $c.Played}}<span class="pill result {{$c.Outcome}}">{{$c.Score}}</span>{{end}}{{if $c.Friendly}} <span class="pill">Amistoso</span>{{end}}</h2>
 <p class="sub">
   {{if $c.Home.Valid}}{{if $c.Home.Bool}}Local{{else}}Visitante{{end}}{{end}}{{with $c.Place}} · {{.}}{{end}}{{with $c.Meet}} · Citación {{.}}{{end}}
 </p>
@@ -20,14 +20,15 @@
 
 <h2 id="lista">Convocados ({{len .Data.In}})</h2>
 {{/* Solo aviso: en un amistoso puede haber más. */}}
-{{if gt (len .Data.In) 18}}<p class="warn">Recuerda que la federación solo permite 18 jugadores por partido.</p>{{end}}
+{{if .Data.SuspendedIn}}<p class="warn">Hay {{.Data.SuspendedIn}} jugador(es) sancionado(s) en la convocatoria.</p>{{end}}
+{{if and (gt (len .Data.In) 18) (not $c.Friendly)}}<p class="warn">Recuerda que la federación solo permite 18 jugadores por partido.</p>{{end}}
 {{template "cycleHead" .Data.Cycle}}
 {{if .Data.In}}
 <ul class="list">
   {{range .Data.In}}
   <li>
     <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
-    <span class="grow">{{.DisplayName}}
+    <span class="grow">{{.DisplayName}} {{template "discipline" .}}
       {{if and $c.Captain.Valid (eq $c.Captain.Int64 .ID)}}<span class="badge">C</span>{{end}}{{if .Goalkeeper}}<span class="badge">P</span>{{end}}
       {{if .Yellow}}<span class="card-y" title="{{.Yellow}} amarilla(s)">{{.Yellow}}</span>{{end}}{{if .Red}}<span class="card-r" title="roja"></span>{{end}}
       {{template "cycle" .Cycle}}</span>
@@ -72,7 +73,7 @@
 <h2 id="partido">Tarjetas</h2>
 <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/cards" class="card">
   <table class="roles">
-    <thead><tr><th></th><th>Amarillas</th><th>Roja</th></tr></thead>
+    <thead><tr><th></th><th>Amarillas</th><th>Roja</th><th>Partidos</th></tr></thead>
     <tbody>
     {{range .Data.In}}
       <tr>
@@ -83,10 +84,12 @@
           <option value="2" {{if eq .Yellow 2}}selected{{end}}>2</option>
         </select></td>
         <td><input type="checkbox" name="r_{{.ID}}" value="1" aria-label="{{.DisplayName}} roja" {{if .Red}}checked{{end}}></td>
+        <td><input type="number" class="games" name="rg_{{.ID}}" min="1" max="20" value="{{if .RedGames}}{{.RedGames}}{{else}}1{{end}}" aria-label="{{.DisplayName}} partidos de sanción por roja"></td>
       </tr>
     {{end}}
     </tbody>
   </table>
+  <p class="sub">2 amarillas = expulsión (1 partido, no suman al ciclo). «Partidos» solo aplica a roja directa. Cada 5 amarillas en la temporada, 1 partido.{{if $c.Friendly}} Amistoso: no cuentan.{{end}}</p>
   <button>Guardar tarjetas</button>
 </form>
 {{else}}
@@ -99,7 +102,7 @@
   {{range .Data.Available}}
   <li>
     <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
-    <span class="grow">{{.DisplayName}}{{if .Trainings}} <span class="sub">{{.Percent}}% asist.</span>{{end}}{{template "cycle" .Cycle}}</span>
+    <span class="grow">{{.DisplayName}} {{template "discipline" .}}{{if .Trainings}} <span class="sub">{{.Percent}}% asist.</span>{{end}}{{template "cycle" .Cycle}}</span>
     <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/add"><input type="hidden" name="player" value="{{.ID}}"><button class="small">Añadir</button></form>
   </li>
   {{end}}
