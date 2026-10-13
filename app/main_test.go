@@ -124,6 +124,28 @@ func TestWithDBName(t *testing.T) {
 	}
 }
 
+func TestCanonicalHost(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	h := canonicalHost("https://plantilla.fixcomap.com", ok)
+	cases := []struct {
+		method, url string
+		code        int
+		loc         string
+	}{
+		{"GET", "https://plantilla.fixcomap.com/t/1", 200, ""},
+		{"GET", "https://app.fixcomap.com/t/1?x=1", 301, "https://plantilla.fixcomap.com/t/1?x=1"},
+		{"POST", "https://app.fixcomap.com/logout", 308, "https://plantilla.fixcomap.com/logout"},
+		{"GET", "https://app.fixcomap.com/health", 200, ""},
+	}
+	for _, c := range cases {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(c.method, c.url, nil))
+		if rec.Code != c.code || rec.Header().Get("Location") != c.loc {
+			t.Errorf("%s %s = %d %q", c.method, c.url, rec.Code, rec.Header().Get("Location"))
+		}
+	}
+}
+
 func TestRequireRedirects(t *testing.T) {
 	a := &auth{cfg: Config{SessionKey: strings.Repeat("k", 32)}}
 	h := a.require(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("pasó sin sesión") }))

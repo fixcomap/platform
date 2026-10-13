@@ -85,12 +85,14 @@ func main() {
 	// /healthz la contesta su frontend con un 404 sin llegar al contenedor.
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /dbcheck", dbcheck)
+	var handler http.Handler = mux
 	if a, err := newApp(ctx); err != nil {
 		slog.Error("app sin arrancar, se sirve 503", "err", err)
 		mux.HandleFunc("/", notReady)
 	} else {
 		defer func() { _ = a.st.db.Close() }()
 		a.routes(mux)
+		handler = canonicalHost(a.auth.cfg.BaseURL, mux)
 	}
 
 	// otelhttp: un span por petición y las métricas http.server.* (duración,
@@ -100,7 +102,7 @@ func main() {
 		Addr: ":" + port,
 		// CrossOriginProtection: CSRF por Sec-Fetch-Site/Origin, sin tokens en
 		// cada formulario. Junto a SameSite=Lax en la cookie de sesión.
-		Handler: otelhttp.NewHandler(http.NewCrossOriginProtection().Handler(mux), "http",
+		Handler: otelhttp.NewHandler(http.NewCrossOriginProtection().Handler(handler), "http",
 			otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/health" }),
 			// Con el patrón del mux (/t/{team}/...) y no la ruta real: los ids
 			// dispararían la cardinalidad de spans y métricas.

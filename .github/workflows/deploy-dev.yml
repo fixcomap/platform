@@ -1,7 +1,8 @@
 # Despliegue de desarrollo: cada push a develop publica app-dev en
-# https://dev.fixcomap.com. Misma configuración de L2 que producción con otro
-# estado (prefix=app-dev) y otras variables: base de datos app_dev en el mismo
-# Neon, sin monitorización ni telemetría, sin tag de versión.
+# https://plantilla.dev.fixcomap.com (dev.fixcomap.com redirige ahí). Misma
+# configuración de L2 que producción con otro estado (prefix=app-dev) y otras
+# variables: base de datos app_dev en el mismo Neon, sin monitorización ni
+# telemetría, sin tag de versión.
 #
 # Desactivado hasta que exista el binding WIF de develop (L1, release) y la
 # base app_dev en Neon: variable de repo DEV_DEPLOY=true para activarlo.
@@ -90,10 +91,10 @@ jobs:
         env:
           TF_VAR_image: ${{ env.IMAGE_DIGEST }}
           TF_VAR_service_name: app-dev
-          TF_VAR_app_hostname: dev.fixcomap.com
+          TF_VAR_app_hostname: plantilla.dev.fixcomap.com
           TF_VAR_environment: development
           TF_VAR_db_name: app_dev
-          TF_VAR_base_url: https://dev.fixcomap.com
+          TF_VAR_base_url: https://plantilla.dev.fixcomap.com
           TF_VAR_enable_monitoring: "false"
           TF_VAR_otlp_endpoint: "" # sin telemetría: no gasta cuota de Grafana Cloud
         run: |

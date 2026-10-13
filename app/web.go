@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -93,6 +94,28 @@ func (a *app) fail(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	logger(r.Context()).Error("request", "path", r.URL.Path, "err", err)
 	http.Error(w, "error interno", http.StatusInternalServerError)
+}
+
+// canonicalHost redirige cualquier otro hostname (los antiguos, *.run.app) al
+// de base_url: la cookie de sesión y el callback OAuth solo valen en ese host.
+// /health queda fuera para que las sondas por hostname sigan funcionando.
+func canonicalHost(baseURL string, next http.Handler) http.Handler {
+	u, err := url.Parse(baseURL)
+	if baseURL == "" || err != nil || u.Host == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host == u.Host || r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// 308 conserva método y cuerpo de un POST; un GET se queda en 301.
+		code := http.StatusMovedPermanently
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			code = http.StatusPermanentRedirect
+		}
+		http.Redirect(w, r, baseURL+r.URL.RequestURI(), code)
+	})
 }
 
 func pathID(r *http.Request, name string) (int64, error) {
