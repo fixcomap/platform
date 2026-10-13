@@ -1,11 +1,7 @@
 {{define "content"}}
 {{$t := .Team}}
 <form method="post" action="/t/{{$t.ID}}/callups" class="card">
-  <div class="row">
-    <label class="field"><span>Fecha del partido</span><input type="date" name="day" value="{{iso .Data.Today}}" required></label>
-    <label class="field"><span>Rival</span><input type="text" name="rival"></label>
-  </div>
-  <label class="field"><span>Lugar</span><input type="text" name="place"></label>
+  {{template "matchFields" .Data.Empty}}
   <button>Nueva convocatoria</button>
 </form>
 {{with .Data.Callups}}
@@ -13,8 +9,9 @@
   {{range .}}
   <li>
     <a class="grow" href="/t/{{$t.ID}}/callups/{{.ID}}">
-      {{weekday .Day}} {{date .Day}}{{with .Rival}} · vs {{.}}{{end}}{{with .Place}}<div class="sub">{{.}}</div>{{end}}
+      {{weekday .Day}} {{date .Day}}{{with .Kickoff}} {{.}}{{end}}{{with .Rival}} · vs {{.}}{{end}}{{with .Place}}<div class="sub">{{.}}</div>{{end}}
     </a>
+    {{if .Played}}<span class="pill result {{.Outcome}}">{{.Score}}</span>{{end}}
     <span class="pill">{{.Count}}</span>
   </li>
   {{end}}

@@ -108,6 +108,10 @@ type Player struct {
 	Attended, Trainings, Injured, Justified int
 	// Entrenos del ciclo (desde el último partido); solo donde se muestra.
 	Cycle []Mark
+	// Tarjetas y portero en un partido; solo en la lista de convocados.
+	Yellow     int
+	Red        bool
+	Goalkeeper bool
 }
 
 // Status de asistencia. Para el porcentaje, cualquier ausencia es falta:
@@ -163,12 +167,55 @@ type Training struct {
 	Total   int
 }
 
+// Callup es una convocatoria y, a la vez, el partido.
 type Callup struct {
-	ID    int64
-	Day   time.Time
-	Rival string
-	Place string
-	Count int
+	ID       int64
+	Day      time.Time
+	Rival    string
+	Place    string
+	Kickoff  string // "HH:MM" o vacío
+	Meet     string // citación, "HH:MM" o vacío
+	Home     sql.NullBool
+	GoalsFor sql.NullInt64
+	GoalsAg  sql.NullInt64
+	Captain  sql.NullInt64
+	Count    int
+}
+
+// Played: hay resultado cargado.
+func (c Callup) Played() bool { return c.GoalsFor.Valid && c.GoalsAg.Valid }
+
+// Outcome: G, E o P desde el punto de vista del equipo.
+func (c Callup) Outcome() string {
+	switch {
+	case !c.Played():
+		return ""
+	case c.GoalsFor.Int64 > c.GoalsAg.Int64:
+		return "G"
+	case c.GoalsFor.Int64 < c.GoalsAg.Int64:
+		return "P"
+	}
+	return "E"
+}
+
+// Score en el orden habitual: el local primero.
+func (c Callup) Score() string {
+	if !c.Played() {
+		return ""
+	}
+	a, b := c.GoalsFor.Int64, c.GoalsAg.Int64
+	if c.Home.Valid && !c.Home.Bool {
+		a, b = b, a
+	}
+	return fmt.Sprintf("%d-%d", a, b)
+}
+
+const callupCols = `c.id, c.day, c.rival, c.place, COALESCE(c.kickoff, ''), COALESCE(c.meet_time, ''),
+	c.home, c.goals_for, c.goals_against, c.captain_id`
+
+func scanCallup(sc interface{ Scan(...any) error }, c *Callup, extra ...any) error {
+	return sc.Scan(append([]any{&c.ID, &c.Day, &c.Rival, &c.Place, &c.Kickoff, &c.Meet,
+		&c.Home, &c.GoalsFor, &c.GoalsAg, &c.Captain}, extra...)...)
 }
 
 type store struct{ db *sql.DB }
@@ -465,7 +512,7 @@ func (s store) cycle(ctx context.Context, teamID int64, end time.Time, includeEn
 
 func (s store) callups(ctx context.Context, teamID int64) ([]Callup, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT c.id, c.day, c.rival, c.place, count(cp.*)
+		SELECT `+callupCols+`, count(cp.*)
 		FROM callups c LEFT JOIN callup_players cp ON cp.callup_id = c.id
 		WHERE c.team_id = $1 GROUP BY c.id ORDER BY c.day DESC, c.id DESC`, teamID)
 	if err != nil {
@@ -475,7 +522,7 @@ func (s store) callups(ctx context.Context, teamID int64) ([]Callup, error) {
 	var out []Callup
 	for rows.Next() {
 		var c Callup
-		if err := rows.Scan(&c.ID, &c.Day, &c.Rival, &c.Place, &c.Count); err != nil {
+		if err := scanCallup(rows, &c, &c.Count); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -484,17 +531,49 @@ func (s store) callups(ctx context.Context, teamID int64) ([]Callup, error) {
 }
 
 func (s store) callup(ctx context.Context, teamID, id int64) (Callup, error) {
-	c := Callup{ID: id}
-	err := s.db.QueryRowContext(ctx, "SELECT day, rival, place FROM callups WHERE team_id = $1 AND id = $2",
-		teamID, id).Scan(&c.Day, &c.Rival, &c.Place)
+	var c Callup
+	err := scanCallup(s.db.QueryRowContext(ctx, "SELECT "+callupCols+" FROM callups c WHERE c.team_id = $1 AND c.id = $2",
+		teamID, id), &c)
 	return c, err
+}
+
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func (s store) createCallup(ctx context.Context, teamID int64, c Callup) (int64, error) {
 	var id int64
-	err := s.db.QueryRowContext(ctx, `INSERT INTO callups (team_id, day, rival, place)
-		VALUES ($1, $2, $3, $4) RETURNING id`, teamID, c.Day, c.Rival, c.Place).Scan(&id)
+	err := s.db.QueryRowContext(ctx, `INSERT INTO callups (team_id, day, rival, place, kickoff, meet_time, home)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, teamID, c.Day, c.Rival, c.Place,
+		nullIfEmpty(c.Kickoff), nullIfEmpty(c.Meet), c.Home).Scan(&id)
 	return id, err
+}
+
+// updateCallup guarda datos del partido y resultado (los goles, ambos o ninguno).
+func (s store) updateCallup(ctx context.Context, teamID int64, c Callup) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE callups SET day = $3, rival = $4, place = $5, kickoff = $6,
+		meet_time = $7, home = $8, goals_for = $9, goals_against = $10 WHERE team_id = $1 AND id = $2`,
+		teamID, c.ID, c.Day, c.Rival, c.Place, nullIfEmpty(c.Kickoff), nullIfEmpty(c.Meet), c.Home,
+		c.GoalsFor, c.GoalsAg)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// setCards: tarjetas de un convocado; el UPDATE solo encuentra la fila si
+// convocatoria y jugador son de este equipo.
+func (s store) setCards(ctx context.Context, teamID, callupID, playerID int64, yellow int, red bool) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE callup_players cp SET yellow = $4, red = $5
+		FROM callups c WHERE cp.callup_id = c.id AND c.team_id = $1 AND c.id = $2 AND cp.player_id = $3`,
+		teamID, callupID, playerID, yellow, red)
+	return err
 }
 
 func (s store) deleteCallup(ctx context.Context, teamID, id int64) error {
@@ -505,7 +584,7 @@ func (s store) deleteCallup(ctx context.Context, teamID, id int64) error {
 // callupPlayers: convocados en el orden en que se añadieron.
 func (s store) callupPlayers(ctx context.Context, callupID int64) ([]Player, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active
+		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active, cp.yellow, cp.red, cp.goalkeeper
 		FROM callup_players cp JOIN players p ON p.id = cp.player_id
 		WHERE cp.callup_id = $1 ORDER BY cp.position`, callupID)
 	if err != nil {
@@ -515,7 +594,8 @@ func (s store) callupPlayers(ctx context.Context, callupID int64) ([]Player, err
 	var out []Player
 	for rows.Next() {
 		var p Player
-		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active); err != nil {
+		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active,
+			&p.Yellow, &p.Red, &p.Goalkeeper); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -535,11 +615,48 @@ func (s store) addToCallup(ctx context.Context, teamID, callupID, playerID int64
 	return err
 }
 
+// removeFromCallup quita al jugador y, si era el capitán, deja la
+// convocatoria sin capitán: hay que volver a elegirlo.
 func (s store) removeFromCallup(ctx context.Context, teamID, callupID, playerID int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM callup_players cp USING callups c
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM callup_players cp USING callups c
 		WHERE cp.callup_id = c.id AND c.team_id = $1 AND c.id = $2 AND cp.player_id = $3`,
-		teamID, callupID, playerID)
-	return err
+		teamID, callupID, playerID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE callups SET captain_id = NULL
+		WHERE team_id = $1 AND id = $2 AND captain_id = $3`, teamID, callupID, playerID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// setRoles fija capitán (0 = ninguno) y porteros. Ambos deben ser convocados
+// de esta convocatoria; lo garantizan los JOIN/EXISTS contra callup_players.
+func (s store) setRoles(ctx context.Context, teamID, callupID, captain int64, goalkeepers []int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `UPDATE callups c SET captain_id = CASE WHEN EXISTS (
+			SELECT 1 FROM callup_players WHERE callup_id = c.id AND player_id = $3) THEN $3::bigint END
+		WHERE c.team_id = $1 AND c.id = $2`, teamID, callupID, captain)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE callup_players SET goalkeeper = (player_id = ANY($2))
+		WHERE callup_id = $1`, callupID, goalkeepers); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 type Template struct {
