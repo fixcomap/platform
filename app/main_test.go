@@ -296,7 +296,15 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("info imagen: %q", info)
 	}
 	do("POST", cu+"/roles", url.Values{"captain": {itoa(ps[0].ID)}, "goalkeeper": {itoa(ps[1].ID)}}, 303)
-	do("POST", cu+"/cards", url.Values{"y_" + itoa(ps[0].ID): {"2"}, "r_" + itoa(ps[1].ID): {"1"}}, 303)
+	do("POST", cu+"/cards", url.Values{"y_" + itoa(ps[0].ID): {"2"}, "r_" + itoa(ps[1].ID): {"1"},
+		"g_" + itoa(ps[0].ID): {"2"}, "g_" + itoa(ps[1].ID): {"2"}, "notes": {"Buen partido"}}, 303)
+	// 4 goles por jugador con 3 en el marcador → aviso; goleadores de la temporada.
+	if body := do("GET", cu, nil, 200).Body.String(); !strings.Contains(body, "superan los goles") || !strings.Contains(body, "Buen partido") {
+		t.Fatal("falta el aviso de goles o las observaciones")
+	}
+	if sc, err := a.st.scorers(context.Background(), mustID(t, base), mustDay(t, "2026-10-20")); err != nil || len(sc) != 2 || sc[0].Goals != 2 {
+		t.Fatalf("goleadores: %v %+v", err, sc)
+	}
 	in, _ = a.st.callupPlayers(context.Background(), mustID(t, cu))
 	if in[0].Goalkeeper != true || in[1].Yellow != 2 || !in[0].Red {
 		t.Fatalf("roles/tarjetas: %+v", in)

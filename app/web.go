@@ -305,8 +305,20 @@ func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
 		ps[i].Suspension = disc.Next[ps[i].ID]
 		ps[i].CycleYellows = disc.Yellows[ps[i].ID]
 	}
+	scorers, err := a.st.scorers(r.Context(), t.ID, now)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	goals := map[int64]int{}
+	for _, sc := range scorers {
+		goals[sc.Player.ID] = sc.Goals
+	}
+	for i := range ps {
+		ps[i].Goals = goals[ps[i].ID]
+	}
 	a.render(w, r, "players", view{Team: &t, Tab: "players", Title: "Jugadores", Data: map[string]any{
-		"Players": ps, "Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)},
+		"Players": ps, "Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)}, "Scorers": scorers,
 	}})
 }
 
@@ -570,7 +582,10 @@ func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	suspendedIn := 0
+	suspendedIn, scored := 0, 0
+	for _, p := range in {
+		scored += p.Goals
+	}
 	for _, ps := range [][]Player{all, in} {
 		for i := range ps {
 			ps[i].Suspension = disc.Suspended[c.ID][ps[i].ID]
@@ -594,7 +609,9 @@ func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
 		"Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)},
 		// La imagen solo se genera con capitán y al menos un portero marcados.
 		"RolesReady": c.Captain.Valid && goalkeepers > 0, "Info": callupInfo(t, c),
-		"SuspendedIn": suspendedIn}
+		"SuspendedIn": suspendedIn,
+		// Goles por jugador que superan el marcador: casi siempre un error al cargar.
+		"GoalsMismatch": c.GoalsFor.Valid && int64(scored) > c.GoalsFor.Int64, "Scored": scored}
 	if l, at, err := a.layout(r, t.ID); err == nil {
 		data["Layout"] = l
 		data["TemplateVersion"] = at.Unix()
@@ -704,6 +721,15 @@ func (a *app) callupCards(w http.ResponseWriter, r *http.Request, t Team) {
 	if !ok {
 		return
 	}
+	notes := strings.TrimSpace(r.FormValue("notes"))
+	if len(notes) > 4000 {
+		http.Error(w, "observaciones demasiado largas", http.StatusBadRequest)
+		return
+	}
+	if err := a.st.setCallupNotes(r.Context(), t.ID, id, notes); err != nil {
+		a.fail(w, r, err)
+		return
+	}
 	in, err := a.st.callupPlayers(r.Context(), id)
 	if err != nil {
 		a.fail(w, r, err)
@@ -719,7 +745,11 @@ func (a *app) callupCards(w http.ResponseWriter, r *http.Request, t Team) {
 		if err != nil || games < 1 || games > 20 {
 			games = 1
 		}
-		if err := a.st.setCards(r.Context(), t.ID, id, p.ID, y, r.FormValue("r_"+pid) != "", games); err != nil {
+		goals, err := strconv.Atoi(r.FormValue("g_" + pid))
+		if err != nil || goals < 0 || goals > 30 {
+			goals = 0
+		}
+		if err := a.st.setMatchStats(r.Context(), t.ID, id, p.ID, goals, y, r.FormValue("r_"+pid) != "", games); err != nil {
 			a.fail(w, r, err)
 			return
 		}

@@ -5,6 +5,7 @@
 <p class="sub">
   {{if $c.Home.Valid}}{{if $c.Home.Bool}}Local{{else}}Visitante{{end}}{{end}}{{with $c.Place}} · {{.}}{{end}}{{with $c.Meet}} · Citación {{.}}{{end}}
 </p>
+{{with $c.Notes}}<p class="card notes">{{.}}</p>{{end}}
 
 <details class="card">
   <summary>Datos del partido y resultado</summary>
@@ -30,6 +31,7 @@
     <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
     <span class="grow">{{.DisplayName}} {{template "discipline" .}}
       {{if and $c.Captain.Valid (eq $c.Captain.Int64 .ID)}}<span class="badge">C</span>{{end}}{{if .Goalkeeper}}<span class="badge">P</span>{{end}}
+      {{if .Goals}}<span class="goals" title="{{.Goals}} gol(es)">⚽{{if gt .Goals 1}}×{{.Goals}}{{end}}</span>{{end}}
       {{if .Yellow}}<span class="card-y" title="{{.Yellow}} amarilla(s)">{{.Yellow}}</span>{{end}}{{if .Red}}<span class="card-r" title="roja"></span>{{end}}
       {{template "cycle" .Cycle}}</span>
     <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/remove"><input type="hidden" name="player" value="{{.ID}}"><button class="danger small">Quitar</button></form>
@@ -70,14 +72,16 @@
 </script>
 {{end}}
 
-<h2 id="partido">Tarjetas</h2>
+<h2 id="partido">Goles y tarjetas</h2>
+{{if .Data.GoalsMismatch}}<p class="warn">Los goles por jugador ({{.Data.Scored}}) superan los goles del equipo en el resultado ({{$c.GoalsFor.Int64}}).</p>{{end}}
 <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/cards" class="card">
   <table class="roles">
-    <thead><tr><th></th><th>Amarillas</th><th>Roja</th><th>Partidos</th></tr></thead>
+    <thead><tr><th></th><th>Goles</th><th>Amarillas</th><th>Roja</th><th>Partidos</th></tr></thead>
     <tbody>
     {{range .Data.In}}
       <tr>
         <td>{{.DisplayName}}</td>
+        <td><input type="number" class="games" name="g_{{.ID}}" min="0" max="30" inputmode="numeric" value="{{.Goals}}" aria-label="{{.DisplayName}} goles"></td>
         <td><select name="y_{{.ID}}" aria-label="{{.DisplayName}} amarillas">
           <option value="0" {{if eq .Yellow 0}}selected{{end}}>0</option>
           <option value="1" {{if eq .Yellow 1}}selected{{end}}>1</option>
@@ -90,7 +94,8 @@
     </tbody>
   </table>
   <p class="sub">2 amarillas = expulsión (1 partido, no suman al ciclo). «Partidos» solo aplica a roja directa. Cada 5 amarillas en la temporada, 1 partido.{{if $c.Friendly}} Amistoso: no cuentan.{{end}}</p>
-  <button>Guardar tarjetas</button>
+  <label class="field"><span>Observaciones del partido</span><textarea name="notes" rows="3" maxlength="4000">{{$c.Notes}}</textarea></label>
+  <button>Guardar goles, tarjetas y observaciones</button>
 </form>
 {{else}}
 <p class="empty">Añade jugadores desde la lista de abajo.</p>
