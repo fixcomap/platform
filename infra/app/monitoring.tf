@@ -8,11 +8,12 @@
 
 locals {
   uptime_checks = {
-    # Sonda HTTPS contra /healthz por el hostname público: valida a la vez DNS,
-    # el certificado gestionado, el domain mapping y el servicio.
+    # Sonda HTTPS contra /health por el hostname público: valida a la vez DNS,
+    # el certificado gestionado, el domain mapping y el servicio. No /healthz:
+    # Cloud Run la reserva y su frontend responde 404 sin llegar a la app.
     app = {
       host = var.app_hostname
-      path = "/healthz"
+      path = "/health"
       doc  = "Revisar Cloud Run (servicio `${var.service_name}`, ${var.region}), el domain mapping y el certificado."
     }
     landing = {

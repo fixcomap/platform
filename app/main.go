@@ -15,7 +15,7 @@ import (
 )
 
 // notReady responde mientras falte configuración o base de datos: el servicio
-// arranca igual (healthz verde, deploy no bloqueado) pero no sirve datos.
+// arranca igual (/health verde, deploy no bloqueado) pero no sirve datos.
 func notReady(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "servicio sin configurar", http.StatusServiceUnavailable)
 }
@@ -50,7 +50,7 @@ func newApp(ctx context.Context) (*app, error) {
 	return &app{st: store{db: db}, auth: a, pages: pages}, nil
 }
 
-func healthz(w http.ResponseWriter, _ *http.Request) {
+func health(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -81,7 +81,9 @@ func main() {
 		port = "8080"
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthz)
+	// /health y no /healthz: Cloud Run reserva algunas rutas acabadas en "z" y
+	// /healthz la contesta su frontend con un 404 sin llegar al contenedor.
+	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /dbcheck", dbcheck)
 	if a, err := newApp(ctx); err != nil {
 		slog.Error("app sin arrancar, se sirve 503", "err", err)
@@ -92,14 +94,14 @@ func main() {
 	}
 
 	// otelhttp: un span por petición y las métricas http.server.* (duración,
-	// tamaño) etiquetadas por ruta y código de estado. /healthz queda fuera
+	// tamaño) etiquetadas por ruta y código de estado. /health queda fuera
 	// para no llenar las trazas con la sonda de Cloud Monitoring.
 	srv := &http.Server{
 		Addr: ":" + port,
 		// CrossOriginProtection: CSRF por Sec-Fetch-Site/Origin, sin tokens en
 		// cada formulario. Junto a SameSite=Lax en la cookie de sesión.
 		Handler: otelhttp.NewHandler(http.NewCrossOriginProtection().Handler(mux), "http",
-			otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
+			otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/health" }),
 			// Con el patrón del mux (/t/{team}/...) y no la ruta real: los ids
 			// dispararían la cardinalidad de spans y métricas.
 			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
