@@ -74,29 +74,39 @@
 
 <h2 id="partido">Goles y tarjetas</h2>
 {{if .Data.GoalsMismatch}}<p class="warn">Los goles por jugador ({{.Data.Scored}}) superan los goles del equipo en el resultado ({{$c.GoalsFor.Int64}}).</p>{{end}}
-<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/cards" class="card">
-  <table class="roles">
-    <thead><tr><th></th><th>Goles</th><th>Amarillas</th><th>Roja</th><th>Partidos</th></tr></thead>
-    <tbody>
-    {{range .Data.In}}
-      <tr>
-        <td>{{.DisplayName}}</td>
-        <td><input type="number" class="games" name="g_{{.ID}}" min="0" max="30" inputmode="numeric" value="{{.Goals}}" aria-label="{{.DisplayName}} goles"></td>
-        <td><select name="y_{{.ID}}" aria-label="{{.DisplayName}} amarillas">
-          <option value="0" {{if eq .Yellow 0}}selected{{end}}>0</option>
-          <option value="1" {{if eq .Yellow 1}}selected{{end}}>1</option>
-          <option value="2" {{if eq .Yellow 2}}selected{{end}}>2</option>
-        </select></td>
-        <td><input type="checkbox" name="r_{{.ID}}" value="1" aria-label="{{.DisplayName}} roja" {{if .Red}}checked{{end}}></td>
-        <td><input type="number" class="games" name="rg_{{.ID}}" min="1" max="20" value="{{if .RedGames}}{{.RedGames}}{{else}}1{{end}}" aria-label="{{.DisplayName}} partidos de sanción por roja"></td>
-      </tr>
-    {{end}}
-    </tbody>
-  </table>
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/cards" class="card" id="stats">
+  <ul class="stats">
+  {{range .Data.In}}
+    <li>
+      <div class="stats-name">{{.DisplayName}}</div>
+      <div class="stats-row">
+        <div class="ctl"><span>Goles</span>
+          <span class="stepper"><button type="button" data-step="-1" aria-label="restar gol a {{.DisplayName}}">−</button><input type="number" name="g_{{.ID}}" min="0" max="30" inputmode="numeric" value="{{.Goals}}" aria-label="{{.DisplayName}} goles"><button type="button" data-step="1" aria-label="sumar gol a {{.DisplayName}}">+</button></span>
+        </div>
+        <div class="ctl"><span>Amarillas</span>
+          <span class="seg yellow" role="radiogroup" aria-label="{{.DisplayName}} amarillas">{{$y := .Yellow}}{{$id := .ID}}{{range $n := seq 3}}<label><input type="radio" name="y_{{$id}}" value="{{$n}}" {{if eq $n $y}}checked{{end}}><span>{{$n}}</span></label>{{end}}</span>
+        </div>
+        <div class="ctl"><span>Roja</span>
+          <label class="redbox"><input type="checkbox" name="r_{{.ID}}" value="1" aria-label="{{.DisplayName}} roja" {{if .Red}}checked{{end}}></label>
+        </div>
+        <div class="ctl redgames"><span>Partidos</span>
+          <span class="stepper"><button type="button" data-step="-1" aria-label="menos partidos de sanción">−</button><input type="number" name="rg_{{.ID}}" min="1" max="20" inputmode="numeric" value="{{if .RedGames}}{{.RedGames}}{{else}}1{{end}}" aria-label="{{.DisplayName}} partidos de sanción por roja"><button type="button" data-step="1" aria-label="más partidos de sanción">+</button></span>
+        </div>
+      </div>
+    </li>
+  {{end}}
+  </ul>
   <p class="sub">2 amarillas = expulsión (1 partido, no suman al ciclo). «Partidos» solo aplica a roja directa. Cada 5 amarillas en la temporada, 1 partido.{{if $c.Friendly}} Amistoso: no cuentan.{{end}}</p>
   <label class="field"><span>Observaciones del partido</span><textarea name="notes" rows="3" maxlength="4000">{{$c.Notes}}</textarea></label>
   <button>Guardar goles, tarjetas y observaciones</button>
 </form>
+<script>
+  // Botones − / + de los campos numéricos (goles y partidos de sanción).
+  document.querySelectorAll('#stats .stepper button').forEach(b => b.addEventListener('click', () => {
+    const i = b.parentElement.querySelector('input');
+    i.value = Math.min(+i.max, Math.max(+i.min, (+i.value || 0) + +b.dataset.step));
+  }));
+</script>
 {{else}}
 <p class="empty">Añade jugadores desde la lista de abajo.</p>
 {{end}}
