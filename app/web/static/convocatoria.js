@@ -2,7 +2,7 @@
 // el servidor no procesa imágenes (cero CPU en Cloud Run, sin librerías).
 "use strict";
 
-async function drawCallup(canvas, imgURL, layout, names) {
+async function drawCallup(canvas, imgURL, layout, names, info = []) {
   const img = new Image();
   img.src = imgURL;
   await img.decode();
@@ -29,6 +29,19 @@ async function drawCallup(canvas, imgURL, layout, names) {
     const col = Math.floor(i / rows), row = i % rows;
     ctx.fillText(name, layout.columns[col] * W, (layout.top + row * step) * H);
   });
+
+  // Datos del partido: líneas centradas; la primera (rival) algo más grande.
+  const box = layout.info;
+  if (box && info.length) {
+    ctx.fillStyle = box.color;
+    ctx.textAlign = "center";
+    info.forEach((line, i) => {
+      const size = box.font_size * W * (i === 0 ? 1.2 : 1);
+      ctx.font = `700 ${size}px "Open Sans", sans-serif`;
+      ctx.fillText(line, box.x * W, (box.top + i * box.step) * H);
+    });
+    ctx.textAlign = "start";
+  }
 }
 
 async function shareCanvas(canvas, filename) {

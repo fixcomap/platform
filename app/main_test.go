@@ -223,6 +223,13 @@ func TestFlow(t *testing.T) {
 	do("POST", base+"/players", url.Values{"first_name": {"Cristóbal"}, "nickname": {"Cristo"}, "number": {"1"}}, 303)
 	do("POST", base+"/players", url.Values{"first_name": {"Álvaro"}, "number": {"2"}}, 303)
 	do("POST", base+"/players", url.Values{"first_name": {""}}, 400)
+	tpl, _ := parsePages()
+	var buf strings.Builder
+	many := make([]Player, 19)
+	if err := tpl["callup"].Execute(&buf, view{Team: &Team{ID: 1}, Data: map[string]any{"Callup": Callup{}, "In": many,
+		"Cycle": cycleInfo{}}}); err != nil || !strings.Contains(buf.String(), "solo permite 18") {
+		t.Fatalf("aviso de 18 convocados: %v", err)
+	}
 	do("GET", base+"/players", nil, 200)
 
 	ps, err := a.st.players(context.Background(), mustID(t, base), true)
@@ -266,15 +273,45 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("orden de convocados: %v %+v", err, in)
 	}
 	do("GET", cu, nil, 200)
+
+	// Partido: datos, roles obligatorios para la imagen, resultado y tarjetas.
+	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "rival": {"Nerja"}, "kickoff": {"25:00"}}, 400)
+	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "goals_for": {"2"}}, 400)
+	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "rival": {"Nerja"}, "kickoff": {"11:00"},
+		"meet": {"10:00"}, "home": {"0"}, "place": {"Nerja"}, "goals_for": {"3"}, "goals_against": {"1"}}, 303)
+	c, err := a.st.callup(context.Background(), mustID(t, base), mustID(t, cu))
+	if err != nil || c.Score() != "1-3" || c.Outcome() != "G" || c.Kickoff != "11:00" {
+		t.Fatalf("partido: %v %+v", err, c)
+	}
+	if info := callupInfo(Team{Name: "Cómpeta"}, c); len(info) != 4 || info[0] != "Nerja - Cómpeta" {
+		t.Fatalf("info imagen: %q", info)
+	}
+	do("POST", cu+"/roles", url.Values{"captain": {itoa(ps[0].ID)}, "goalkeeper": {itoa(ps[1].ID)}}, 303)
+	do("POST", cu+"/cards", url.Values{"y_" + itoa(ps[0].ID): {"2"}, "r_" + itoa(ps[1].ID): {"1"}}, 303)
+	in, _ = a.st.callupPlayers(context.Background(), mustID(t, cu))
+	if in[0].Goalkeeper != true || in[1].Yellow != 2 || !in[0].Red {
+		t.Fatalf("roles/tarjetas: %+v", in)
+	}
+
 	do("POST", cu+"/remove", url.Values{"player": {itoa(ps[1].ID)}}, 303)
+	if c, _ := a.st.callup(context.Background(), mustID(t, base), mustID(t, cu)); c.Captain.Valid {
+		// ps[1] no era capitán: el capitán (ps[0]) debe seguir.
+	} else {
+		t.Fatal("se perdió el capitán al quitar a otro jugador")
+	}
 
 	// Plantilla: PNG mínimo válido.
 	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 	if err := a.st.saveTemplate(context.Background(), mustID(t, base), png, "image/png", mustJSON(t, defaultLayout)); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(do("GET", cu, nil, 200).Body.String(), "drawCallup") {
-		t.Fatal("la convocatoria no pinta la imagen con plantilla")
+	// Tras quitar al portero ya no hay portero: la imagen se bloquea.
+	if body := do("GET", cu, nil, 200).Body.String(); strings.Contains(body, "drawCallup(") || !strings.Contains(body, "Marca al capitán") {
+		t.Fatal("la imagen debería pedir capitán y portero")
+	}
+	do("POST", cu+"/roles", url.Values{"captain": {itoa(ps[0].ID)}, "goalkeeper": {itoa(ps[0].ID)}}, 303)
+	if !strings.Contains(do("GET", cu, nil, 200).Body.String(), "drawCallup(") {
+		t.Fatal("la convocatoria no pinta la imagen con plantilla y roles")
 	}
 	do("GET", base+"/settings", nil, 200)
 	do("POST", base+"/template/layout", url.Values{"layout": {`{"columns":[2]}`}}, 400)
@@ -297,7 +334,14 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("acceso a equipo ajeno: %d", rec.Code)
 	}
 
-	// Entrenador (no admin) de su propio equipo: no gestiona entrenadores.
+	// Entrenador (no admin) de su propio equipo: ni ve ni cambia los ajustes.
+	r = httptest.NewRequest("GET", base+"/settings", nil)
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: signSession([]byte(a.auth.cfg.SessionKey), "coach@test.dev", time.Now().Add(time.Hour))})
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, r)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("entrenador viendo ajustes: %d", rec.Code)
+	}
 	r = httptest.NewRequest("POST", base+"/coaches", strings.NewReader("email=x%40test.dev"))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: signSession([]byte(a.auth.cfg.SessionKey), "coach@test.dev", time.Now().Add(time.Hour))})

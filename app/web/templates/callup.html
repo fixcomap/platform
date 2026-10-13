@@ -1,38 +1,96 @@
 {{define "content"}}
 {{$t := .Team}}{{$c := .Data.Callup}}
-<h2>{{weekday $c.Day}} {{date $c.Day}}{{with $c.Rival}} · vs {{.}}{{end}}</h2>
-{{with $c.Place}}<p class="sub">{{.}}</p>{{end}}
+<h2>{{weekday $c.Day}} {{date $c.Day}}{{with $c.Kickoff}} · {{.}}{{end}}{{with $c.Rival}} · vs {{.}}{{end}}
+  {{if $c.Played}}<span class="pill result {{$c.Outcome}}">{{$c.Score}}</span>{{end}}</h2>
+<p class="sub">
+  {{if $c.Home.Valid}}{{if $c.Home.Bool}}Local{{else}}Visitante{{end}}{{end}}{{with $c.Place}} · {{.}}{{end}}{{with $c.Meet}} · Citación {{.}}{{end}}
+</p>
+
+<details class="card">
+  <summary>Datos del partido y resultado</summary>
+  <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/edit" style="margin-top:12px">
+    {{template "matchFields" $c}}
+    <div class="row">
+      <label class="field"><span>Goles nuestros</span><input type="number" name="goals_for" min="0" max="99" inputmode="numeric" value="{{if $c.GoalsFor.Valid}}{{$c.GoalsFor.Int64}}{{end}}"></label>
+      <label class="field"><span>Goles del rival</span><input type="number" name="goals_against" min="0" max="99" inputmode="numeric" value="{{if $c.GoalsAg.Valid}}{{$c.GoalsAg.Int64}}{{end}}"></label>
+    </div>
+    <button>Guardar</button>
+  </form>
+</details>
 
 <h2 id="lista">Convocados ({{len .Data.In}})</h2>
+{{/* Solo aviso: en un amistoso puede haber más. */}}
+{{if gt (len .Data.In) 18}}<p class="warn">Recuerda que la federación solo permite 18 jugadores por partido.</p>{{end}}
 {{template "cycleHead" .Data.Cycle}}
 {{if .Data.In}}
 <ul class="list">
   {{range .Data.In}}
   <li>
     <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
-    <span class="grow">{{.DisplayName}}{{template "cycle" .Cycle}}</span>
+    <span class="grow">{{.DisplayName}}
+      {{if and $c.Captain.Valid (eq $c.Captain.Int64 .ID)}}<span class="badge">C</span>{{end}}{{if .Goalkeeper}}<span class="badge">P</span>{{end}}
+      {{if .Yellow}}<span class="card-y" title="{{.Yellow}} amarilla(s)">{{.Yellow}}</span>{{end}}{{if .Red}}<span class="card-r" title="roja"></span>{{end}}
+      {{template "cycle" .Cycle}}</span>
     <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/remove"><input type="hidden" name="player" value="{{.ID}}"><button class="danger small">Quitar</button></form>
   </li>
   {{end}}
 </ul>
-{{else}}
-<p class="empty">Añade jugadores desde la lista de abajo.</p>
-{{end}}
 
-{{if .Data.In}}
-{{if .Data.Layout}}
+<h2 id="imagen">Capitán y porteros</h2>
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/roles" class="card">
+  <table class="roles">
+    <thead><tr><th></th><th>Capitán</th><th>Portero</th></tr></thead>
+    <tbody>
+    {{range .Data.In}}
+      <tr>
+        <td>{{.DisplayName}}</td>
+        <td><input type="radio" name="captain" value="{{.ID}}" aria-label="{{.DisplayName}} capitán" {{if and $c.Captain.Valid (eq $c.Captain.Int64 .ID)}}checked{{end}}></td>
+        <td><input type="checkbox" name="goalkeeper" value="{{.ID}}" aria-label="{{.DisplayName}} portero" {{if .Goalkeeper}}checked{{end}}></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  <button>Guardar capitán y porteros</button>
+</form>
+
 <h2>Imagen</h2>
+{{if not .Data.Layout}}
+<p class="sub">Falta la plantilla de la imagen{{if .User.Admin}}: súbela en <a href="/t/{{$t.ID}}/settings">Ajustes</a>{{else}}; pídesela a un admin{{end}}.</p>
+{{else if not .Data.RolesReady}}
+<p class="warn">Marca al capitán y al menos un portero para generar la imagen.</p>
+{{else}}
 <canvas id="img"></canvas>
 <p><button id="share" style="width:100%">Compartir / descargar imagen</button></p>
 <script src="/static/convocatoria.js"></script>
 <script>
   const canvas = document.getElementById('img');
-  const ready = drawCallup(canvas, "/t/{{$t.ID}}/template.img?v={{.Data.TemplateVersion}}", {{.Data.Layout}}, {{.Data.Names}});
+  const ready = drawCallup(canvas, "/t/{{$t.ID}}/template.img?v={{.Data.TemplateVersion}}", {{.Data.Layout}}, {{.Data.Names}}, {{.Data.Info}});
   document.getElementById('share').onclick = async () => { await ready; shareCanvas(canvas, "convocatoria-{{iso $c.Day}}.png"); };
 </script>
-{{else}}
-<p class="sub">Sube la plantilla en <a href="/t/{{$t.ID}}/settings">Ajustes</a> para generar la imagen.</p>
 {{end}}
+
+<h2 id="partido">Tarjetas</h2>
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/cards" class="card">
+  <table class="roles">
+    <thead><tr><th></th><th>Amarillas</th><th>Roja</th></tr></thead>
+    <tbody>
+    {{range .Data.In}}
+      <tr>
+        <td>{{.DisplayName}}</td>
+        <td><select name="y_{{.ID}}" aria-label="{{.DisplayName}} amarillas">
+          <option value="0" {{if eq .Yellow 0}}selected{{end}}>0</option>
+          <option value="1" {{if eq .Yellow 1}}selected{{end}}>1</option>
+          <option value="2" {{if eq .Yellow 2}}selected{{end}}>2</option>
+        </select></td>
+        <td><input type="checkbox" name="r_{{.ID}}" value="1" aria-label="{{.DisplayName}} roja" {{if .Red}}checked{{end}}></td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  <button>Guardar tarjetas</button>
+</form>
+{{else}}
+<p class="empty">Añade jugadores desde la lista de abajo.</p>
 {{end}}
 
 <h2>Disponibles</h2>
