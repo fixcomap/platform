@@ -64,10 +64,13 @@ variable "dev_service_name" {
   default = "app-dev"
 }
 
-variable "dev_hostname" {
-  description = "Hostname de desarrollo; debe coincidir con el CNAME de infra/dns."
-  type        = string
-  default     = "dev.fixcomap.com"
+variable "dev_hostnames" {
+  description = <<-EOT
+    Hostnames de desarrollo; deben coincidir con los CNAME de infra/dns. El
+    principal lo fija base_url en deploy-dev.yml; el resto redirigen (301) a él.
+  EOT
+  type        = set(string)
+  default     = ["dev.fixcomap.com", "plantilla.dev.fixcomap.com"]
 }
 
 variable "dev_public" {
@@ -77,7 +80,7 @@ variable "dev_public" {
 }
 
 variable "enable_dev_domain_mapping" {
-  description = "Domain mapping de dev_hostname. false hasta que exista app-dev."
+  description = "Domain mappings de dev_hostnames. false hasta que exista app-dev."
   type        = bool
   default     = true
 }
