@@ -1,0 +1,9 @@
+{
+  "name": "Asistencia y convocatorias",
+  "short_name": "Equipo",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f5fb",
+  "theme_color": "#3b2f8f",
+  "icons": [{ "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

@@ -1,0 +1,25 @@
+{{define "content"}}
+{{$t := .Team}}
+<form method="post" action="/t/{{$t.ID}}/callups" class="card">
+  <div class="row">
+    <label class="field"><span>Fecha del partido</span><input type="date" name="day" value="{{iso .Data.Today}}" required></label>
+    <label class="field"><span>Rival</span><input type="text" name="rival"></label>
+  </div>
+  <label class="field"><span>Lugar</span><input type="text" name="place"></label>
+  <button>Nueva convocatoria</button>
+</form>
+{{with .Data.Callups}}
+<ul class="list">
+  {{range .}}
+  <li>
+    <a class="grow" href="/t/{{$t.ID}}/callups/{{.ID}}">
+      {{weekday .Day}} {{date .Day}}{{with .Rival}} · vs {{.}}{{end}}{{with .Place}}<div class="sub">{{.}}</div>{{end}}
+    </a>
+    <span class="pill">{{.Count}}</span>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="empty">Sin convocatorias.</p>
+{{end}}
+{{end}}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#3b2f8f">
+<title>{{.Title}}{{with .Team}} · {{.Name}}{{end}}</title>
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="icon" href="/static/icon.svg">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+{{if .User.Email}}
+<header>
+  <h1>{{with .Team}}{{.Name}}{{else}}Equipos{{end}}</h1>
+  <form method="post" action="/logout"><button class="ghost small">Salir</button></form>
+</header>
+{{with .Team}}
+<nav>
+  <a href="/t/{{.ID}}/trainings" {{if eq $.Tab "trainings"}}class="on"{{end}}>Entrenos</a>
+  <a href="/t/{{.ID}}/callups" {{if eq $.Tab "callups"}}class="on"{{end}}>Convocatorias</a>
+  <a href="/t/{{.ID}}/players" {{if eq $.Tab "players"}}class="on"{{end}}>Jugadores</a>
+  <a href="/t/{{.ID}}/settings" {{if eq $.Tab "settings"}}class="on"{{end}}>Ajustes</a>
+</nav>
+{{end}}
+{{end}}
+<main>
+{{template "content" .}}
+</main>
+</body>
+</html>

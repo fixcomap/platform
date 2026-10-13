@@ -1,11 +1,9 @@
-// Servicio placeholder: existe para que el pipeline tenga algo real que construir,
-// escanear, firmar y desplegar. Se sustituirá cuando haya producto.
+// App de asistencia a entrenos y convocatorias para entrenadores de fútbol base.
 package main
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,15 +14,40 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-func handler(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
+// notReady responde mientras falte configuración o base de datos: el servicio
+// arranca igual (healthz verde, deploy no bloqueado) pero no sirve datos.
+func notReady(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "servicio sin configurar", http.StatusServiceUnavailable)
+}
+
+// newApp monta la app si hay configuración y BD; si no, devuelve el motivo.
+func newApp(ctx context.Context) (*app, error) {
+	a := &auth{
+		httpClient: &http.Client{Timeout: 10 * time.Second},
+		tokenURL:   "https://oauth2.googleapis.com/token",
 	}
-	if _, err := fmt.Fprintf(w, "fixcomap platform %s\n", os.Getenv("APP_VERSION")); err != nil {
-		// La cabecera ya salió: no se puede cambiar el status; queda constancia en el log.
-		logger(r.Context()).Error("write response", "err", err)
+	// DEV_USER solo fuera de Cloud Run (K_SERVICE lo define Cloud Run): en
+	// producción es imposible saltarse el login aunque alguien lo configure.
+	if dev := os.Getenv("DEV_USER"); dev != "" && os.Getenv("K_SERVICE") == "" {
+		a.devUser = normEmail(dev)
+	} else {
+		cfg, err := loadConfig()
+		if err != nil {
+			return nil, err
+		}
+		a.cfg = cfg
 	}
+	pages, err := parsePages()
+	if err != nil {
+		return nil, err
+	}
+	dbCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	db, err := openDB(dbCtx)
+	if err != nil {
+		return nil, err
+	}
+	return &app{st: store{db: db}, auth: a, pages: pages}, nil
 }
 
 func healthz(w http.ResponseWriter, _ *http.Request) {
@@ -58,18 +81,31 @@ func main() {
 		port = "8080"
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", handler)
-	mux.HandleFunc("/healthz", healthz)
-	mux.HandleFunc("/dbcheck", dbcheck)
+	mux.HandleFunc("GET /healthz", healthz)
+	mux.HandleFunc("GET /dbcheck", dbcheck)
+	if a, err := newApp(ctx); err != nil {
+		slog.Error("app sin arrancar, se sirve 503", "err", err)
+		mux.HandleFunc("/", notReady)
+	} else {
+		defer func() { _ = a.st.db.Close() }()
+		a.routes(mux)
+	}
 
 	// otelhttp: un span por petición y las métricas http.server.* (duración,
 	// tamaño) etiquetadas por ruta y código de estado. /healthz queda fuera
 	// para no llenar las trazas con la sonda de Cloud Monitoring.
 	srv := &http.Server{
 		Addr: ":" + port,
-		Handler: otelhttp.NewHandler(mux, "http",
+		// CrossOriginProtection: CSRF por Sec-Fetch-Site/Origin, sin tokens en
+		// cada formulario. Junto a SameSite=Lax en la cookie de sesión.
+		Handler: otelhttp.NewHandler(http.NewCrossOriginProtection().Handler(mux), "http",
 			otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
+			// Con el patrón del mux (/t/{team}/...) y no la ruta real: los ids
+			// dispararían la cardinalidad de spans y métricas.
 			otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+				if r.Pattern != "" {
+					return r.Pattern
+				}
 				return r.Method + " " + r.URL.Path
 			}),
 		),

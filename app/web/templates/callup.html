@@ -1,0 +1,55 @@
+{{define "content"}}
+{{$t := .Team}}{{$c := .Data.Callup}}
+<h2>{{weekday $c.Day}} {{date $c.Day}}{{with $c.Rival}} · vs {{.}}{{end}}</h2>
+{{with $c.Place}}<p class="sub">{{.}}</p>{{end}}
+
+<h2 id="lista">Convocados ({{len .Data.In}})</h2>
+{{if .Data.In}}
+<ul class="list">
+  {{range .Data.In}}
+  <li>
+    <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
+    <span class="grow">{{.DisplayName}}</span>
+    <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/remove"><input type="hidden" name="player" value="{{.ID}}"><button class="danger small">Quitar</button></form>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="empty">Añade jugadores desde la lista de abajo.</p>
+{{end}}
+
+{{if .Data.In}}
+{{if .Data.Layout}}
+<h2>Imagen</h2>
+<canvas id="img"></canvas>
+<p><button id="share" style="width:100%">Compartir / descargar imagen</button></p>
+<script src="/static/convocatoria.js"></script>
+<script>
+  const canvas = document.getElementById('img');
+  const ready = drawCallup(canvas, "/t/{{$t.ID}}/template.img?v={{.Data.TemplateVersion}}", {{.Data.Layout}}, {{.Data.Names}});
+  document.getElementById('share').onclick = async () => { await ready; shareCanvas(canvas, "convocatoria-{{iso $c.Day}}.png"); };
+</script>
+{{else}}
+<p class="sub">Sube la plantilla en <a href="/t/{{$t.ID}}/settings">Ajustes</a> para generar la imagen.</p>
+{{end}}
+{{end}}
+
+<h2>Disponibles</h2>
+{{if .Data.Available}}
+<ul class="list">
+  {{range .Data.Available}}
+  <li>
+    <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
+    <span class="grow">{{.DisplayName}}{{if .Trainings}} <span class="sub">{{.Percent}}% asist.</span>{{end}}</span>
+    <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/add"><input type="hidden" name="player" value="{{.ID}}"><button class="small">Añadir</button></form>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="empty">Todos convocados.</p>
+{{end}}
+
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/delete" onsubmit="return confirm('¿Borrar esta convocatoria?')" style="margin-top:24px">
+  <button class="danger small">Borrar convocatoria</button>
+</form>
+{{end}}

@@ -1,0 +1,16 @@
+{{define "content"}}
+{{if .Data}}
+<ul class="list">
+  {{range .Data}}<li><a class="grow" href="/t/{{.ID}}">{{.Name}}</a></li>{{end}}
+</ul>
+{{else}}
+<p class="empty">Tu cuenta ({{.User.Email}}) no está en ningún equipo.<br>Pide a otro entrenador que te añada desde Ajustes.</p>
+{{end}}
+{{if .User.Admin}}
+<h2>Nuevo equipo</h2>
+<form method="post" action="/teams" class="row">
+  <input type="text" name="name" placeholder="Cómpeta C.F. Infantil" required>
+  <button>Crear</button>
+</form>
+{{end}}
+{{end}}
