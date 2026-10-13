@@ -90,10 +90,10 @@ func computeDiscipline(matches []matchCards, today time.Time) Discipline {
 				pend[pid].games += games
 				pend[pid].reason = reason
 			}
-			switch {
-			case c.Yellow == 2:
+			switch c.Yellow {
+			case 2:
 				add(1, "doble amarilla")
-			case c.Yellow == 1:
+			case 1:
 				acc[pid]++
 				if acc[pid]%yellowCycle == 0 {
 					add(1, strconv.Itoa(acc[pid])+"ª amarilla")
