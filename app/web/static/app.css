@@ -105,3 +105,8 @@ input[type=time] { width: 100%; padding: 10px; border: 1px solid var(--line); bo
 .check-inline { display: flex; align-items: center; gap: 8px; }
 .check-inline input { width: 20px; height: 20px; accent-color: var(--accent); }
 input.games { width: 56px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
+.goals { margin-left: 4px; font-size: 13px; }
+ol.scorers { margin: 10px 0 0; padding-left: 22px; }
+ol.scorers li { padding: 4px 0; }
+ol.scorers li span { display: inline-block; min-width: 60%; }
+.notes { white-space: pre-wrap; }
