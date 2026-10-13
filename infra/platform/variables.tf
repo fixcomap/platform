@@ -54,6 +54,34 @@ variable "enable_domain_mapping" {
   default     = true
 }
 
+# ---------- desarrollo ----------
+# Servicio app-dev, creado en L2 por deploy-dev.yml en cada push a develop.
+# Mismo arranque en dos pasos que producción: dev_public y el domain mapping
+# en false hasta que exista el servicio.
+
+variable "dev_service_name" {
+  type    = string
+  default = "app-dev"
+}
+
+variable "dev_hostname" {
+  description = "Hostname de desarrollo; debe coincidir con el CNAME de infra/dns."
+  type        = string
+  default     = "dev.fixcomap.com"
+}
+
+variable "dev_public" {
+  description = "run.invoker a allUsers sobre app-dev. false hasta que L2 lo haya creado."
+  type        = bool
+  default     = false
+}
+
+variable "enable_dev_domain_mapping" {
+  description = "Domain mapping de dev_hostname. false hasta que exista app-dev."
+  type        = bool
+  default     = false
+}
+
 variable "github_org" {
   type    = string
   default = "fixcomap"

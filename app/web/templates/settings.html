@@ -5,16 +5,20 @@
   {{range .Data.Coaches}}
   <li>
     <span class="grow">{{.}}</span>
-    {{if ne . $.User.Email}}
+    {{if and $.User.Admin (ne . $.User.Email)}}
     <form method="post" action="/t/{{$t.ID}}/coaches/remove" onsubmit="return confirm('¿Quitar a {{.}}?')"><input type="hidden" name="email" value="{{.}}"><button class="danger small">Quitar</button></form>
     {{end}}
   </li>
   {{end}}
 </ul>
+{{if .User.Admin}}
 <form method="post" action="/t/{{$t.ID}}/coaches" class="row" style="margin-top:8px">
   <input type="email" name="email" placeholder="email de Google del entrenador" required>
   <button>Añadir</button>
 </form>
+{{else}}
+<p class="sub">Para añadir o quitar entrenadores, pídeselo a un admin.</p>
+{{end}}
 
 <h2>Plantilla de convocatoria</h2>
 <form method="post" action="/t/{{$t.ID}}/template" enctype="multipart/form-data" class="card">

@@ -111,6 +111,19 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+func TestWithDBName(t *testing.T) {
+	got, err := withDBName("postgres://u:p@h.neon.tech/neondb?sslmode=require", "app_dev")
+	if err != nil || got != "postgres://u:p@h.neon.tech/app_dev?sslmode=require" {
+		t.Fatalf("got %q %v", got, err)
+	}
+	if got, _ := withDBName("host=x dbname=y", ""); got != "host=x dbname=y" {
+		t.Fatalf("sin DB_NAME no debe tocar la cadena: %q", got)
+	}
+	if _, err := withDBName("host=x dbname=y", "app_dev"); err == nil {
+		t.Fatal("formato clave=valor aceptado con DB_NAME")
+	}
+}
+
 func TestRequireRedirects(t *testing.T) {
 	a := &auth{cfg: Config{SessionKey: strings.Repeat("k", 32)}}
 	h := a.require(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("pasó sin sesión") }))
@@ -242,6 +255,16 @@ func TestFlow(t *testing.T) {
 	mux.ServeHTTP(rec, r)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("acceso a equipo ajeno: %d", rec.Code)
+	}
+
+	// Entrenador (no admin) de su propio equipo: no gestiona entrenadores.
+	r = httptest.NewRequest("POST", base+"/coaches", strings.NewReader("email=x%40test.dev"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: signSession([]byte(a.auth.cfg.SessionKey), "coach@test.dev", time.Now().Add(time.Hour))})
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, r)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("entrenador gestionando entrenadores: %d", rec.Code)
 	}
 }
 

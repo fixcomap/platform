@@ -8,11 +8,12 @@
 
 locals {
   uptime_checks = {
-    # Sonda HTTPS contra /healthz por el hostname público: valida a la vez DNS,
-    # el certificado gestionado, el domain mapping y el servicio.
+    # Sonda HTTPS contra /health por el hostname público: valida a la vez DNS,
+    # el certificado gestionado, el domain mapping y el servicio. No /healthz:
+    # Cloud Run la reserva y su frontend responde 404 sin llegar a la app.
     app = {
       host = var.app_hostname
-      path = "/healthz"
+      path = "/health"
       doc  = "Revisar Cloud Run (servicio `${var.service_name}`, ${var.region}), el domain mapping y el certificado."
     }
     landing = {
@@ -34,7 +35,7 @@ moved {
 }
 
 resource "google_monitoring_uptime_check_config" "site" {
-  for_each = local.uptime_checks
+  for_each = var.enable_monitoring ? local.uptime_checks : {}
 
   display_name = "${each.value.host} ${each.value.path}"
   timeout      = "10s"
@@ -61,7 +62,14 @@ resource "google_monitoring_uptime_check_config" "site" {
   }
 }
 
+moved {
+  from = google_monitoring_notification_channel.email
+  to   = google_monitoring_notification_channel.email[0]
+}
+
 resource "google_monitoring_notification_channel" "email" {
+  count = var.enable_monitoring ? 1 : 0
+
   display_name = "Alertas de plataforma (email)"
   type         = "email"
 
@@ -73,7 +81,7 @@ resource "google_monitoring_notification_channel" "email" {
 # Alerta si la sonda falla desde más de una región durante 5 minutos. Se cierra
 # sola 30 min después de recuperarse.
 resource "google_monitoring_alert_policy" "site_down" {
-  for_each = local.uptime_checks
+  for_each = var.enable_monitoring ? local.uptime_checks : {}
 
   display_name = "${each.value.host} caída"
   combiner     = "OR"
@@ -100,7 +108,7 @@ resource "google_monitoring_alert_policy" "site_down" {
     }
   }
 
-  notification_channels = [google_monitoring_notification_channel.email.id]
+  notification_channels = [google_monitoring_notification_channel.email[0].id]
 
   alert_strategy {
     auto_close = "1800s"

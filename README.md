@@ -334,9 +334,23 @@ El proyecto es de *direct upload*: publica `wrangler pages deploy` con un token 
 de los environments `production`/`preview` de `web`, o de la org). Manual, una vez: crear
 `hola@fixcomap.com` en Email Routing.
 
+## Desarrollo (dev.fixcomap.com)
+
+`deploy-dev.yml` despliega `app-dev` en cada push a `develop`: misma `infra/app` con estado
+`prefix=app-dev`, base de datos `app_dev` en el mismo Neon (`DB_NAME`), mismo `app-config` con
+`APP_BASE_URL`, sin uptime checks ni telemetría. Coste 0: comparte free tier de Cloud Run y Neon y no
+añade secretos. Contrapartida aceptada: misma SA (`gh-deployer`, `app-runtime`) que producción.
+
+Arranque (una vez):
+1. Neon: crear la base `app_dev` en la rama principal (*Databases → New database*), mismo owner.
+2. Google Auth Platform → Clients → `app`: añadir la redirect URI `https://dev.fixcomap.com/auth/callback`.
+3. Release con este cambio (L1: binding WIF de `develop`; dns: CNAME `dev`).
+4. `gh variable set DEV_DEPLOY --body true` y relanzar `deploy-dev` (crea `app-dev`).
+5. PR con `dev_public = true` y `enable_dev_domain_mapping = true` (`infra/platform/variables.tf`) y release.
+
 ## Disponibilidad
 
-Uptime checks de Cloud Monitoring (`infra/app/monitoring.tf`): HTTPS a `https://app.fixcomap.com/healthz`
+Uptime checks de Cloud Monitoring (`infra/app/monitoring.tf`): HTTPS a `https://app.fixcomap.com/health`
 y a `https://fixcomap.com/` (la landing no vive en GCP, pero la sonda y la alerta sí) cada 5 min desde
 3 regiones, con alerta por email a `billing@fixcomap.com` si falla desde más de una región durante 5 min
 (se cierra sola al recuperarse). Free tier: 1M ejecuciones/mes (uso ~52k), alertas y email sin coste. Cloud Monitoring no verifica el email: comprobar que llega la primera notificación
@@ -348,7 +362,7 @@ La app exporta trazas y métricas (HTTP por ruta y código, runtime de Go) por O
 free** (10k series, 50 GB de logs y trazas, 14 días de retención; sin tarjeta) y escribe logs JSON con
 `trace_id` que Cloud Logging correlaciona. Todo llega por variables estándar `OTEL_*` (`infra/app/cloud_run.tf`):
 el código no conoce el backend, y sin `OTEL_EXPORTER_OTLP_ENDPOINT` no exporta (local, previews).
-`/healthz` no genera trazas. Si el exportador falla, la app sigue sirviendo y lo deja en el log.
+`/health` no genera trazas. Si el exportador falla, la app sigue sirviendo y lo deja en el log.
 
 Configuración, una vez:
 

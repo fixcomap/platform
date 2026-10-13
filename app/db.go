@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -24,7 +25,23 @@ func databaseURL() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(b)), nil
+	return withDBName(strings.TrimSpace(string(b)), os.Getenv("DB_NAME"))
+}
+
+// withDBName cambia la base de datos de la cadena de conexión. Desarrollo usa
+// las mismas credenciales de Neon que producción pero otra base (app_dev): sin
+// secreto propio (coste 0) y con las tablas separadas de verdad, cosa que un
+// search_path no garantiza detrás del pooler de Neon.
+func withDBName(dsn, name string) (string, error) {
+	if name == "" {
+		return dsn, nil
+	}
+	u, err := url.Parse(dsn)
+	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
+		return "", errors.New("DB_NAME requiere una cadena de conexión en formato URL")
+	}
+	u.Path = "/" + name
+	return u.String(), nil
 }
 
 // dbcheck abre una conexión y ejecuta SELECT 1. Nunca escribe la cadena de
