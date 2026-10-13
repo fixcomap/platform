@@ -4,10 +4,15 @@
 # hostname es, como el invoker, una decisión de plataforma. tf-platform debe
 # ser propietario verificado del dominio en Search Console (ver README).
 # El CNAME correspondiente vive en infra/dns.
-resource "google_cloud_run_domain_mapping" "app" {
-  count = var.enable_domain_mapping ? 1 : 0
+moved {
+  from = google_cloud_run_domain_mapping.app[0]
+  to   = google_cloud_run_domain_mapping.app["app.fixcomap.com"]
+}
 
-  name     = var.app_hostname
+resource "google_cloud_run_domain_mapping" "app" {
+  for_each = var.enable_domain_mapping ? var.app_hostnames : []
+
+  name     = each.value
   location = var.region
 
   metadata {
@@ -19,10 +24,15 @@ resource "google_cloud_run_domain_mapping" "app" {
   }
 }
 
-resource "google_cloud_run_domain_mapping" "app_dev" {
-  count = var.enable_dev_domain_mapping ? 1 : 0
+moved {
+  from = google_cloud_run_domain_mapping.app_dev[0]
+  to   = google_cloud_run_domain_mapping.app_dev["dev.fixcomap.com"]
+}
 
-  name     = var.dev_hostname
+resource "google_cloud_run_domain_mapping" "app_dev" {
+  for_each = var.enable_dev_domain_mapping ? var.dev_hostnames : []
+
+  name     = each.value
   location = var.region
 
   metadata {

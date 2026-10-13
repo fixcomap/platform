@@ -3,16 +3,16 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
-variable "dev_hostname" {
-  description = "Hostname de desarrollo (servicio app-dev)."
-  type        = string
-  default     = "dev.fixcomap.com"
+variable "dev_hostnames" {
+  description = "Hostnames de desarrollo (servicio app-dev); el principal lo fija deploy-dev.yml."
+  type        = set(string)
+  default     = ["dev.fixcomap.com", "plantilla.dev.fixcomap.com"]
 }
 
-variable "app_hostname" {
-  description = "Hostname del servicio Cloud Run. www y el apex quedan libres para la landing."
-  type        = string
-  default     = "app.fixcomap.com"
+variable "app_hostnames" {
+  description = "Hostnames de producción (servicio app). www y el apex quedan libres para la landing."
+  type        = set(string)
+  default     = ["app.fixcomap.com", "plantilla.fixcomap.com"]
 }
 
 variable "cloudflare_account_id" {
