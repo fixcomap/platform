@@ -2,26 +2,27 @@
 {{$t := .Team}}{{$tr := .Data.Training}}
 <h2>{{weekday $tr.Day}} {{date $tr.Day}}</h2>
 {{if .Data.Rows}}
+<p class="sub">✓ vino · T tarde · L lesionado · J justificada · ✗ no justificada</p>
 <form method="post">
   <ul class="list">
-    {{range .Data.Rows}}
-    <li class="check" style="padding:0">
-      <label class="check grow" style="display:flex;align-items:center;gap:10px;padding:10px 12px;min-height:52px">
-        <span class="num">{{if .Player.Number.Valid}}{{.Player.Number.Int64}}{{end}}</span>
-        <span class="grow">{{.Player.DisplayName}} <span class="sub">{{.Player.FirstName}} {{.Player.LastName}}</span></span>
-        <input type="checkbox" name="present" value="{{.Player.ID}}" {{if .Present}}checked{{end}}>
-      </label>
+    {{range .Data.Rows}}{{$p := .Player}}{{$st := .Status}}
+    <li>
+      <span class="num">{{if $p.Number.Valid}}{{$p.Number.Int64}}{{end}}</span>
+      <span class="grow">{{$p.DisplayName}} {{template "discipline" $p}} <span class="sub">{{$p.FirstName}} {{$p.LastName}}</span></span>
+      <span class="seg" role="radiogroup" aria-label="Asistencia de {{$p.DisplayName}}">
+        {{range statuses}}<label class="{{.}}" title="{{statusLabel .}}"><input type="radio" name="st_{{$p.ID}}" value="{{.}}" {{if eq . $st}}checked{{end}}><span>{{symbol .}}</span></label>{{end}}
+      </span>
     </li>
     {{end}}
   </ul>
   <label class="field" style="margin-top:12px"><span>Notas del entreno</span><textarea name="notes" rows="2">{{$tr.Notes}}</textarea></label>
-  <div class="sticky-save"><button>Guardar asistencia (<span id="count">0</span>)</button></div>
+  <div class="sticky-save"><button>Guardar asistencia (<span id="count">0</span> vinieron)</button></div>
 </form>
 <script>
-  // Contador en vivo: se ve de un vistazo cuántos han venido.
-  const boxes = document.querySelectorAll('input[name=present]');
-  const count = () => document.getElementById('count').textContent = [...boxes].filter(b => b.checked).length;
-  boxes.forEach(b => b.addEventListener('change', count)); count();
+  // Contador en vivo de los que vinieron.
+  const count = () => document.getElementById('count').textContent =
+    document.querySelectorAll('input[value=presente]:checked, input[value=tarde]:checked').length;
+  document.querySelectorAll('.seg input').forEach(b => b.addEventListener('change', count)); count();
 </script>
 {{else}}
 <p class="empty">No hay jugadores activos. <a href="/t/{{$t.ID}}/players">Añádelos aquí</a>.</p>

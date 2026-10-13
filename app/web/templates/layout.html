@@ -20,7 +20,7 @@
   <a href="/t/{{.ID}}/trainings" {{if eq $.Tab "trainings"}}class="on"{{end}}>Entrenos</a>
   <a href="/t/{{.ID}}/callups" {{if eq $.Tab "callups"}}class="on"{{end}}>Convocatorias</a>
   <a href="/t/{{.ID}}/players" {{if eq $.Tab "players"}}class="on"{{end}}>Jugadores</a>
-  <a href="/t/{{.ID}}/settings" {{if eq $.Tab "settings"}}class="on"{{end}}>Ajustes</a>
+  {{if $.User.Admin}}<a href="/t/{{.ID}}/settings" {{if eq $.Tab "settings"}}class="on"{{end}}>Ajustes</a>{{end}}
 </nav>
 {{end}}
 {{end}}
@@ -29,3 +29,32 @@
 </main>
 </body>
 </html>
+
+{{/* Entrenos del ciclo de un jugador: un chip por entreno (día + estado). */}}
+{{define "cycle"}}{{if .}}<div class="cycle">{{range .}}<span class="chip {{.Status}}" title="{{weekday .Day}} {{date .Day}}: {{if .Status}}{{statusLabel .Status}}{{else}}sin lista{{end}}">{{weekday .Day}} {{.Day.Day}} {{if .Status}}{{symbol .Status}}{{else}}·{{end}}</span>{{end}}</div>{{end}}{{end}}
+
+{{define "cycleHead"}}<p class="sub">{{if .FromMatch}}Entrenos desde el partido del {{date .Since}}{{else}}Entrenos de los últimos 14 días (sin partido previo){{end}}{{if not .Trainings}}: ninguno todavía{{end}}. ✓ vino · T tarde · L lesionado · J justificada · ✗ no justificada</p>{{end}}
+
+{{/* Datos del partido (crear y editar convocatoria). Recibe un Callup. */}}
+{{define "matchFields"}}
+<div class="row">
+  <label class="field"><span>Fecha *</span><input type="date" name="day" value="{{iso .Day}}" required></label>
+  <label class="field"><span>Hora del partido</span><input type="time" name="kickoff" value="{{.Kickoff}}"></label>
+  <label class="field"><span>Citación</span><input type="time" name="meet" value="{{.Meet}}"></label>
+</div>
+<div class="row">
+  <label class="field"><span>Rival</span><input type="text" name="rival" value="{{.Rival}}"></label>
+  <label class="field"><span>Local / visitante</span>
+    <select name="home">
+      <option value="" {{if not .Home.Valid}}selected{{end}}>Sin indicar</option>
+      <option value="1" {{if and .Home.Valid .Home.Bool}}selected{{end}}>Local</option>
+      <option value="0" {{if and .Home.Valid (not .Home.Bool)}}selected{{end}}>Visitante</option>
+    </select>
+  </label>
+</div>
+<label class="field"><span>Lugar / campo</span><input type="text" name="place" value="{{.Place}}"></label>
+<label class="field check-inline"><input type="checkbox" name="friendly" value="1" {{if .Friendly}}checked{{end}}> Amistoso (no cuenta tarjetas ni sanciones)</label>
+{{end}}
+
+{{/* Disciplina de un jugador: sancionado o apercibido (a una amarilla del ciclo). */}}
+{{define "discipline"}}{{if ge .Late lateAlert}}<span class="badge warnb" title="Llegó tarde {{.Late}} de sus últimos {{lateWindow}} entrenos">{{.Late}} tardes en los últimos {{lateWindow}} · hablar con él</span> {{end}}{{if ge .Streak 2}}<span class="badge warnb" title="{{.Streak}} entrenos seguidos sin venir (sin contar lesiones)">{{.Streak}} faltas seguidas</span> {{end}}{{if .Suspension}}<span class="badge bad" title="Sancionado: {{.Suspension}}">Sancionado · {{.Suspension}}</span>{{else if eq .CycleYellows 4}}<span class="badge warnb" title="4 amarillas: con la próxima, sanción">Apercibido</span>{{end}}{{end}}
