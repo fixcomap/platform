@@ -117,6 +117,10 @@ type Player struct {
 	// amarillas del ciclo acumuladas antes de él (4 = apercibido).
 	Suspension   string
 	CycleYellows int
+	// Faltas seguidas más recientes sin contar lesiones (2+ = aviso).
+	Streak int
+	// Llegadas tarde en sus últimos lateWindow entrenos (lateAlert+ = aviso).
+	Late int
 }
 
 // Status de asistencia. Para el porcentaje, cualquier ausencia es falta:
@@ -125,12 +129,16 @@ type Status string
 
 const (
 	Presente      Status = "presente"
+	Tarde         Status = "tarde" // vino, pero tarde: cuenta como asistencia
 	Lesionado     Status = "lesionado"
 	Justificado   Status = "justificado"
 	Injustificado Status = "injustificado"
 )
 
-var statuses = []Status{Presente, Lesionado, Justificado, Injustificado}
+var statuses = []Status{Presente, Tarde, Lesionado, Justificado, Injustificado}
+
+// Attended: vino (a su hora o tarde).
+func (s Status) Attended() bool { return s == Presente || s == Tarde }
 
 func validStatus(s Status) bool {
 	for _, v := range statuses {
@@ -316,7 +324,7 @@ func (s store) removeCoach(ctx context.Context, teamID int64, email string) erro
 func (s store) players(ctx context.Context, teamID int64, onlyActive bool) ([]Player, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active,
-		       count(a.*) FILTER (WHERE a.status = 'presente'), count(a.*),
+		       count(a.*) FILTER (WHERE a.status IN ('presente', 'tarde')), count(a.*),
 		       count(a.*) FILTER (WHERE a.status = 'lesionado'),
 		       count(a.*) FILTER (WHERE a.status = 'justificado')
 		FROM players p LEFT JOIN attendance a ON a.player_id = p.id
@@ -336,7 +344,62 @@ func (s store) players(ctx context.Context, teamID int64, onlyActive bool) ([]Pl
 		}
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	streaks, late, err := s.attendanceAlerts(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].Streak = streaks[out[i].ID]
+		out[i].Late = late[out[i].ID]
+	}
+	return out, nil
+}
+
+const (
+	lateWindow = 8 // entrenos recientes que se miran
+	lateAlert  = 5 // tardes en esa ventana para avisar
+)
+
+// attendanceAlerts calcula, por jugador:
+//   - streak: ausencias seguidas desde la última vez que vino. Una lesión no
+//     corta la racha ni suma: es ajena a su compromiso.
+//   - late: llegadas tarde en sus últimos lateWindow entrenos con lista.
+func (s store) attendanceAlerts(ctx context.Context, teamID int64) (map[int64]int, map[int64]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT a.player_id, a.status
+		FROM attendance a JOIN trainings t ON t.id = a.training_id
+		WHERE t.team_id = $1
+		ORDER BY a.player_id, t.day DESC, t.id DESC`, teamID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	streak, late := map[int64]int{}, map[int64]int{}
+	seen := map[int64]int{}
+	streakDone := map[int64]bool{}
+	for rows.Next() {
+		var pid int64
+		var st Status
+		if err := rows.Scan(&pid, &st); err != nil {
+			return nil, nil, err
+		}
+		if seen[pid] < lateWindow {
+			seen[pid]++
+			if st == Tarde {
+				late[pid]++
+			}
+		}
+		switch {
+		case streakDone[pid] || st == Lesionado:
+		case st.Attended():
+			streakDone[pid] = true
+		default:
+			streak[pid]++
+		}
+	}
+	return streak, late, rows.Err()
 }
 
 func (s store) player(ctx context.Context, teamID, id int64) (Player, error) {
@@ -361,7 +424,7 @@ func (s store) savePlayer(ctx context.Context, teamID int64, p Player) error {
 
 func (s store) trainings(ctx context.Context, teamID int64) ([]Training, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT t.id, t.day, t.notes, count(a.*) FILTER (WHERE a.status = 'presente'), count(a.*)
+		SELECT t.id, t.day, t.notes, count(a.*) FILTER (WHERE a.status IN ('presente', 'tarde')), count(a.*)
 		FROM trainings t LEFT JOIN attendance a ON a.training_id = t.id
 		WHERE t.team_id = $1 GROUP BY t.id ORDER BY t.day DESC, t.id DESC`, teamID)
 	if err != nil {
@@ -459,7 +522,7 @@ func (s store) saveAttendance(ctx context.Context, teamID, trainingID int64, not
 		if _, err := tx.ExecContext(ctx, `INSERT INTO attendance (training_id, player_id, status, present)
 			VALUES ($1, $2, $3, $4) ON CONFLICT (training_id, player_id)
 			DO UPDATE SET status = EXCLUDED.status, present = EXCLUDED.present`,
-			trainingID, id, st, st == Presente); err != nil {
+			trainingID, id, st, st.Attended()); err != nil {
 			return err
 		}
 	}

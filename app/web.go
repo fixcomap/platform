@@ -40,13 +40,15 @@ var funcs = template.FuncMap{
 	"iso": func(t time.Time) string { return t.Format("2006-01-02") },
 	// Símbolo corto de cada estado: cabe en el móvil al lado del nombre.
 	"symbol": func(s Status) string {
-		return map[Status]string{Presente: "✓", Lesionado: "L", Justificado: "J", Injustificado: "✗"}[s]
+		return map[Status]string{Presente: "✓", Tarde: "T", Lesionado: "L", Justificado: "J", Injustificado: "✗"}[s]
 	},
 	"statusLabel": func(s Status) string {
-		return map[Status]string{Presente: "Vino", Lesionado: "Lesionado", Justificado: "Justificada",
+		return map[Status]string{Presente: "Vino", Tarde: "Llegó tarde", Lesionado: "Lesionado", Justificado: "Justificada",
 			Injustificado: "No justificada"}[s]
 	},
-	"statuses": func() []Status { return statuses },
+	"statuses":   func() []Status { return statuses },
+	"lateAlert":  func() int { return lateAlert },
+	"lateWindow": func() int { return lateWindow },
 }
 
 // withCycle rellena Player.Cycle con una marca por entreno del ciclo.

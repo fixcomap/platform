@@ -33,7 +33,7 @@
 {{/* Entrenos del ciclo de un jugador: un chip por entreno (día + estado). */}}
 {{define "cycle"}}{{if .}}<div class="cycle">{{range .}}<span class="chip {{.Status}}" title="{{weekday .Day}} {{date .Day}}: {{if .Status}}{{statusLabel .Status}}{{else}}sin lista{{end}}">{{weekday .Day}} {{.Day.Day}} {{if .Status}}{{symbol .Status}}{{else}}·{{end}}</span>{{end}}</div>{{end}}{{end}}
 
-{{define "cycleHead"}}<p class="sub">{{if .FromMatch}}Entrenos desde el partido del {{date .Since}}{{else}}Entrenos de los últimos 14 días (sin partido previo){{end}}{{if not .Trainings}}: ninguno todavía{{end}}. ✓ vino · L lesionado · J justificada · ✗ no justificada</p>{{end}}
+{{define "cycleHead"}}<p class="sub">{{if .FromMatch}}Entrenos desde el partido del {{date .Since}}{{else}}Entrenos de los últimos 14 días (sin partido previo){{end}}{{if not .Trainings}}: ninguno todavía{{end}}. ✓ vino · T tarde · L lesionado · J justificada · ✗ no justificada</p>{{end}}
 
 {{/* Datos del partido (crear y editar convocatoria). Recibe un Callup. */}}
 {{define "matchFields"}}
@@ -57,4 +57,4 @@
 {{end}}
 
 {{/* Disciplina de un jugador: sancionado o apercibido (a una amarilla del ciclo). */}}
-{{define "discipline"}}{{if .Suspension}}<span class="badge bad" title="Sancionado: {{.Suspension}}">Sancionado · {{.Suspension}}</span>{{else if eq .CycleYellows 4}}<span class="badge warnb" title="4 amarillas: con la próxima, sanción">Apercibido</span>{{end}}{{end}}
+{{define "discipline"}}{{if ge .Late lateAlert}}<span class="badge warnb" title="Llegó tarde {{.Late}} de sus últimos {{lateWindow}} entrenos">{{.Late}} tardes en los últimos {{lateWindow}} · hablar con él</span> {{end}}{{if ge .Streak 2}}<span class="badge warnb" title="{{.Streak}} entrenos seguidos sin venir (sin contar lesiones)">{{.Streak}} faltas seguidas</span> {{end}}{{if .Suspension}}<span class="badge bad" title="Sancionado: {{.Suspension}}">Sancionado · {{.Suspension}}</span>{{else if eq .CycleYellows 4}}<span class="badge warnb" title="4 amarillas: con la próxima, sanción">Apercibido</span>{{end}}{{end}}

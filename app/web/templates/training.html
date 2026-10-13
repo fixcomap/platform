@@ -2,13 +2,13 @@
 {{$t := .Team}}{{$tr := .Data.Training}}
 <h2>{{weekday $tr.Day}} {{date $tr.Day}}</h2>
 {{if .Data.Rows}}
-<p class="sub">✓ vino · L lesionado · J justificada · ✗ no justificada</p>
+<p class="sub">✓ vino · T tarde · L lesionado · J justificada · ✗ no justificada</p>
 <form method="post">
   <ul class="list">
     {{range .Data.Rows}}{{$p := .Player}}{{$st := .Status}}
     <li>
       <span class="num">{{if $p.Number.Valid}}{{$p.Number.Int64}}{{end}}</span>
-      <span class="grow">{{$p.DisplayName}} <span class="sub">{{$p.FirstName}} {{$p.LastName}}</span></span>
+      <span class="grow">{{$p.DisplayName}} {{template "discipline" $p}} <span class="sub">{{$p.FirstName}} {{$p.LastName}}</span></span>
       <span class="seg" role="radiogroup" aria-label="Asistencia de {{$p.DisplayName}}">
         {{range statuses}}<label class="{{.}}" title="{{statusLabel .}}"><input type="radio" name="st_{{$p.ID}}" value="{{.}}" {{if eq . $st}}checked{{end}}><span>{{symbol .}}</span></label>{{end}}
       </span>
@@ -21,7 +21,7 @@
 <script>
   // Contador en vivo de los que vinieron.
   const count = () => document.getElementById('count').textContent =
-    document.querySelectorAll('input[value=presente]:checked').length;
+    document.querySelectorAll('input[value=presente]:checked, input[value=tarde]:checked').length;
   document.querySelectorAll('.seg input').forEach(b => b.addEventListener('change', count)); count();
 </script>
 {{else}}
