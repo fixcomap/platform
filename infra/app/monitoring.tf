@@ -37,6 +37,13 @@ moved {
 resource "google_monitoring_uptime_check_config" "site" {
   for_each = var.enable_monitoring ? local.uptime_checks : {}
 
+  # Cambiar el host recrea el check, y la API no deja borrarlo mientras una
+  # política de alerta lo referencia: primero el nuevo, se repunta la alerta
+  # y después se borra el viejo.
+  lifecycle {
+    create_before_destroy = true
+  }
+
   display_name = "${each.value.host} ${each.value.path}"
   timeout      = "10s"
   period       = "300s"
