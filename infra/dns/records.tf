@@ -12,9 +12,18 @@ resource "cloudflare_dns_record" "app" {
   comment = "Cloud Run domain mapping (OpenTofu, infra/dns)"
 }
 
+moved {
+  from = cloudflare_dns_record.app_dev
+  to   = cloudflare_dns_record.app_dev["dev.fixcomap.com"]
+}
+
+# Un nivel más de subdominio (plantilla.dev) no es problema: sin proxy de
+# Cloudflare, el certificado lo emite Google y no depende de Universal SSL.
 resource "cloudflare_dns_record" "app_dev" {
+  for_each = var.dev_hostnames
+
   zone_id = var.cloudflare_zone_id
-  name    = var.dev_hostname
+  name    = each.value
   type    = "CNAME"
   content = "ghs.googlehosted.com"
   ttl     = 300
