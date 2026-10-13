@@ -502,7 +502,13 @@ func (a *app) settingsPage(w http.ResponseWriter, r *http.Request, t Team) {
 	a.render(w, r, "settings", view{Team: &t, Tab: "settings", Title: "Ajustes", Data: data})
 }
 
+// Gestionar entrenadores es solo de admins: un entrenador no puede dar acceso
+// a terceros ni sacar a otro del equipo.
 func (a *app) addCoach(w http.ResponseWriter, r *http.Request, t Team) {
+	if !currentUser(r.Context()).Admin {
+		http.Error(w, "solo un admin puede gestionar entrenadores", http.StatusForbidden)
+		return
+	}
 	email := normEmail(r.FormValue("email"))
 	if !strings.Contains(email, "@") {
 		http.Error(w, "email inválido", http.StatusBadRequest)
@@ -516,6 +522,10 @@ func (a *app) addCoach(w http.ResponseWriter, r *http.Request, t Team) {
 }
 
 func (a *app) removeCoach(w http.ResponseWriter, r *http.Request, t Team) {
+	if !currentUser(r.Context()).Admin {
+		http.Error(w, "solo un admin puede gestionar entrenadores", http.StatusForbidden)
+		return
+	}
 	email := normEmail(r.FormValue("email"))
 	// Quitarse a uno mismo dejaría el equipo huérfano o al usuario fuera sin querer.
 	if email == currentUser(r.Context()).Email {

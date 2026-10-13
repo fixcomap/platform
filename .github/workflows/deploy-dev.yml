@@ -1,0 +1,104 @@
+# Despliegue de desarrollo: cada push a develop publica app-dev en
+# https://dev.fixcomap.com. Misma configuración de L2 que producción con otro
+# estado (prefix=app-dev) y otras variables: base de datos app_dev en el mismo
+# Neon, sin monitorización ni telemetría, sin tag de versión.
+#
+# Desactivado hasta que exista el binding WIF de develop (L1, release) y la
+# base app_dev en Neon: variable de repo DEV_DEPLOY=true para activarlo.
+name: deploy-dev
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+env:
+  GCP_REGION: europe-west1
+  STATE_BUCKET_APP: fixcomap-core-tfstate-app
+  GH_DEPLOYER_SA: gh-deployer@fixcomap-core.iam.gserviceaccount.com
+  # Paquete propio: keep-latest-5 de Artifact Registry cuenta por paquete y los
+  # pushes de develop no deben desplazar las imágenes de producción.
+  IMAGE_REPO: europe-west1-docker.pkg.dev/fixcomap-core/docker/app-dev
+  TOFU_VERSION: 1.12.6
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+# El último push manda: un deploy de dev a medias no protege nada.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+jobs:
+  app-dev:
+    name: app-dev (gh-deployer)
+    if: vars.DEV_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC para GCP y para la firma keyless de cosign
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: auth GCP (gh-deployer)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GH_DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: docker login (Artifact Registry)
+        run: gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
+
+      - name: build
+        run: |
+          echo "IMAGE=$IMAGE_REPO:${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+          docker build --provenance=false -t "$IMAGE_REPO:${GITHUB_SHA::12}" app
+
+      - name: trivy image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: push
+        run: |
+          docker push "$IMAGE"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE")
+          echo "IMAGE_DIGEST=$DIGEST" >> "$GITHUB_ENV"
+          echo "imagen: $DIGEST" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: cosign sign (keyless)
+        run: cosign sign --yes "$IMAGE_DIGEST"
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tofu_wrapper: false
+
+      - name: apply L2 (app-dev)
+        working-directory: infra/app
+        env:
+          TF_VAR_image: ${{ env.IMAGE_DIGEST }}
+          TF_VAR_service_name: app-dev
+          TF_VAR_app_hostname: dev.fixcomap.com
+          TF_VAR_environment: development
+          TF_VAR_db_name: app_dev
+          TF_VAR_base_url: https://dev.fixcomap.com
+          TF_VAR_enable_monitoring: "false"
+          TF_VAR_otlp_endpoint: "" # sin telemetría: no gasta cuota de Grafana Cloud
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=app-dev"
+          tofu plan -input=false -no-color -out=tfplan
+          { echo "## apply infra/app (dev)"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan
+          echo "url: $(tofu output -raw service_url)" >> "$GITHUB_STEP_SUMMARY"

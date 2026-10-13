@@ -68,3 +68,31 @@ variable "app_config_secret_id" {
   type        = string
   default     = "app-config"
 }
+
+# ---------- entorno ----------
+# La misma configuración despliega producción (estado prefix=app, defaults) y
+# desarrollo (estado prefix=app-dev, deploy-dev.yml): solo cambian estas variables.
+
+variable "environment" {
+  description = "deployment.environment de OTel: production o development."
+  type        = string
+  default     = "production"
+}
+
+variable "db_name" {
+  description = "Base de datos de Neon; vacío = la de la cadena de conexión (producción)."
+  type        = string
+  default     = ""
+}
+
+variable "base_url" {
+  description = "URL pública para el callback OAuth; vacío = base_url de app-config (producción)."
+  type        = string
+  default     = ""
+}
+
+variable "enable_monitoring" {
+  description = "Uptime checks y alertas. Solo producción: desarrollo no avisa a nadie."
+  type        = bool
+  default     = true
+}

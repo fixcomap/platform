@@ -18,3 +18,18 @@ resource "google_cloud_run_domain_mapping" "app" {
     route_name = var.cloud_run_service_name
   }
 }
+
+resource "google_cloud_run_domain_mapping" "app_dev" {
+  count = var.enable_dev_domain_mapping ? 1 : 0
+
+  name     = var.dev_hostname
+  location = var.region
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = var.dev_service_name
+  }
+}
