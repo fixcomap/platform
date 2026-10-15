@@ -8,14 +8,10 @@
 {{with $c.Notes}}<p class="card notes">{{.}}</p>{{end}}
 
 <details class="card">
-  <summary>Datos del partido y resultado</summary>
+  <summary>Datos del partido</summary>
   <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/edit" style="margin-top:12px">
     {{template "matchFields" $c}}
-    <div class="row">
-      <label class="field"><span>Goles nuestros</span><input type="number" name="goals_for" min="0" max="99" inputmode="numeric" value="{{if $c.GoalsFor.Valid}}{{$c.GoalsFor.Int64}}{{end}}"></label>
-      <label class="field"><span>Goles del rival</span><input type="number" name="goals_against" min="0" max="99" inputmode="numeric" value="{{if $c.GoalsAg.Valid}}{{$c.GoalsAg.Int64}}{{end}}"></label>
-    </div>
-    <button>Guardar</button>
+    <button>Guardar datos</button>
   </form>
 </details>
 
@@ -25,42 +21,102 @@
 {{if and (gt (len .Data.In) 18) (not $c.Friendly)}}<p class="warn">Recuerda que la federación solo permite 18 jugadores por partido.</p>{{end}}
 {{template "cycleHead" .Data.Cycle}}
 {{if .Data.In}}
-<ul class="list">
+{{/* Una sola lista: cada convocado con su C (capitán, uno) y P (porteros) y
+     el botón Quitar, que envía el mismo formulario a /remove (formaction). */}}
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/roster" id="convocados">
+{{if .Data.StatsOpen}}<input type="hidden" name="with_stats" value="1">{{end}}
+<ul class="list roster">
   {{range .Data.In}}
   <li>
-    <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
-    <span class="grow">{{.DisplayName}} {{template "discipline" .}}
-      {{if and $c.Captain.Valid (eq $c.Captain.Int64 .ID)}}<span class="badge">C</span>{{end}}{{if .Goalkeeper}}<span class="badge">P</span>{{end}}
-      {{if .Goals}}<span class="goals" title="{{.Goals}} gol(es)">⚽{{if gt .Goals 1}}×{{.Goals}}{{end}}</span>{{end}}
-      {{if .Yellow}}<span class="card-y" title="{{.Yellow}} amarilla(s)">{{.Yellow}}</span>{{end}}{{if .Red}}<span class="card-r" title="roja"></span>{{end}}
-      {{template "cycle" .Cycle}}</span>
-    <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/remove"><input type="hidden" name="player" value="{{.ID}}"><button class="danger small">Quitar</button></form>
+    <div class="roster-head">
+      <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
+      <span class="grow">{{.DisplayName}}{{if .Goalkeeper}} <span class="badge" title="Portero (posición POR en su perfil)">P</span>{{end}} {{template "discipline" .}}{{template "cycle" .Cycle}}</span>
+      <button class="danger small" formaction="/t/{{$t.ID}}/callups/{{$c.ID}}/remove" name="player" value="{{.ID}}" aria-label="Quitar a {{.DisplayName}}">Quitar</button>
+    </div>
+    <div class="roster-ctl">
+      <label class="role" title="Capitán"><input type="radio" name="captain" value="{{.ID}}" aria-label="{{.DisplayName}} capitán" {{if and $c.Captain.Valid (eq $c.Captain.Int64 .ID)}}checked{{end}}><span>C</span></label>
+      {{if $.Data.StatsOpen}}
+      <span class="stepper" title="Goles"><button type="button" data-step="-1" aria-label="restar gol a {{.DisplayName}}">−</button><input type="number" name="g_{{.ID}}" min="0" max="30" inputmode="numeric" value="{{.Goals}}" aria-label="{{.DisplayName}} goles"><button type="button" data-step="1" aria-label="sumar gol a {{.DisplayName}}">+</button></span>
+      <span class="seg yellow" role="radiogroup" title="Amarillas" aria-label="{{.DisplayName}} amarillas">{{$y := .Yellow}}{{$id := .ID}}{{range $n := seq 3}}<label><input type="radio" name="y_{{$id}}" value="{{$n}}" {{if eq $n $y}}checked{{end}}><span>{{$n}}</span></label>{{end}}</span>
+      <label class="redbox" title="Roja directa"><input type="checkbox" name="r_{{.ID}}" value="1" aria-label="{{.DisplayName}} roja" {{if .Red}}checked{{end}}></label>
+      <span class="stepper redgames" title="Partidos de sanción por la roja"><button type="button" data-step="-1" aria-label="menos partidos de sanción">−</button><input type="number" name="rg_{{.ID}}" min="1" max="20" inputmode="numeric" value="{{if .RedGames}}{{.RedGames}}{{else}}1{{end}}" aria-label="{{.DisplayName}} partidos de sanción por roja"><button type="button" data-step="1" aria-label="más partidos de sanción">+</button></span>
+      {{end}}
+    </div>
   </li>
   {{end}}
 </ul>
+<p class="sub">C = capitán (uno). Los porteros (P) salen solos de la posición POR del perfil.{{if .Data.StatsOpen}} ⚽ goles · <span class="card-y"></span> amarillas (2 = expulsión, 1 partido, no suman al ciclo) · <span class="card-r"></span> roja directa con sus partidos de sanción. Cada 5 amarillas, 1 partido.{{if $c.Friendly}} Amistoso: las tarjetas no cuentan.{{end}}{{else}} Goles y tarjetas aparecen el día del partido.{{end}}</p>
+<div class="sticky-save"><button>Guardar convocados</button></div>
+</form>
+<script>
+  // Botones − / + de goles y partidos de sanción.
+  document.querySelectorAll('#convocados .stepper button').forEach(b => b.addEventListener('click', () => {
+    const i = b.parentElement.querySelector('input');
+    i.value = Math.min(+i.max, Math.max(+i.min, (+i.value || 0) + +b.dataset.step));
+  }));
+</script>
 
-<h2 id="imagen">Capitán y porteros</h2>
-<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/roles" class="card">
-  <table class="roles">
-    <thead><tr><th></th><th>Capitán</th><th>Portero</th></tr></thead>
-    <tbody>
-    {{range .Data.In}}
-      <tr>
-        <td>{{.DisplayName}}</td>
-        <td><input type="radio" name="captain" value="{{.ID}}" aria-label="{{.DisplayName}} capitán" {{if and $c.Captain.Valid (eq $c.Captain.Int64 .ID)}}checked{{end}}></td>
-        <td><input type="checkbox" name="goalkeeper" value="{{.ID}}" aria-label="{{.DisplayName}} portero" {{if .Goalkeeper}}checked{{end}}></td>
-      </tr>
+<h2 id="planteamiento">Planteamiento</h2>
+<p class="sub">Cómo salimos. Solo se puede elegir entre los {{len .Data.In}} convocados. Queda guardado con el partido; no sale en la imagen.</p>
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/lineup" class="card" id="lineup">
+  <div class="row">
+    <label class="field"><span>Formación</span>
+      <select name="formation">
+        {{if not $c.Formation}}<option value="" selected disabled>Elige formación</option>{{end}}
+        {{range .Data.Formations}}<option value="{{.Name}}" {{if eq .Name $c.Formation}}selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </label>
+  </div>
+  {{with .Data.Lineup}}
+  <div class="pitch" aria-label="Campo con el once">
+    {{template "pitchLines"}}
+    {{range .}}<div class="spot" style="left:{{.Slot.X}}%;top:{{.Slot.Y}}%"><span class="dot">{{.Slot.Code}}</span><span class="who" data-slot="{{.Index}}">{{with .Player}}{{.DisplayName}}{{else}}—{{end}}</span></div>{{end}}
+  </div>
+  <ul class="slots">
+    {{range .}}{{$ls := .}}
+    <li><span class="pos main">{{.Slot.Code}}</span>
+      <select name="slot_{{.Index}}" aria-label="Jugador en {{.Slot.Code}}">
+        <option value="">—</option>
+        {{with .Suggest}}<optgroup label="Convocados que juegan de {{$ls.Slot.Code}}">{{range .}}<option value="{{.ID}}" data-name="{{.DisplayName}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
+        {{with .Others}}<optgroup label="Otros convocados (otra posición)">{{range .}}<option value="{{.ID}}" data-name="{{.DisplayName}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{with .PositionList}} ({{index . 0}}){{end}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
+      </select>
+    </li>
     {{end}}
-    </tbody>
-  </table>
-  <button>Guardar capitán y porteros</button>
+  </ul>
+  {{with $.Data.Bench}}<p class="sub">Suplentes: {{range $i, $p := .}}{{if $i}}, {{end}}{{$p.DisplayName}}{{end}}</p>{{end}}
+  <button>Guardar planteamiento</button>
+  <p class="sub">Si cambias la formación, al guardar se vacían los puestos para colocarlos de nuevo.</p>
+  <script>
+    // Un jugador colocado deja de ofrecerse en los demás puestos (vuelve si se
+    // le quita); el campo se actualiza al momento. El servidor también lo valida.
+    (() => {
+      const sels = [...document.querySelectorAll('#lineup select[name^="slot_"]')];
+      const sync = () => {
+        const used = new Set(sels.map(s => s.value).filter(Boolean));
+        for (const s of sels) {
+          for (const o of s.options) {
+            const taken = o.value && o.value !== s.value && used.has(o.value);
+            o.disabled = taken;
+            o.hidden = taken;
+          }
+          const who = document.querySelector('#lineup .who[data-slot="' + s.name.slice(5) + '"]');
+          if (who) who.textContent = s.value ? s.selectedOptions[0].dataset.name : '—';
+        }
+      };
+      sels.forEach(s => s.addEventListener('change', sync));
+      sync();
+    })();
+  </script>
+  {{else}}
+  <button>Usar formación</button>
+  {{end}}
 </form>
 
-<h2>Imagen</h2>
+<h2 id="imagen">Imagen</h2>
 {{if not .Data.Layout}}
 <p class="sub">Falta la plantilla de la imagen{{if .User.Admin}}: súbela en <a href="/t/{{$t.ID}}/settings">Ajustes</a>{{else}}; pídesela a un admin{{end}}.</p>
 {{else if not .Data.RolesReady}}
-<p class="warn">Marca al capitán y al menos un portero para generar la imagen.</p>
+<p class="warn">{{if not .Data.HasCaptain}}Marca al capitán (C) en la lista de convocados{{end}}{{if and (not .Data.HasCaptain) (not .Data.HasGK)}} y convoca{{else if not .Data.HasGK}}Convoca{{end}}{{if not .Data.HasGK}} al menos a un portero (posición POR en su perfil){{end}} para generar la imagen.</p>
 {{else}}
 <canvas id="img"></canvas>
 <p><button id="share" style="width:100%">Compartir / descargar imagen</button></p>
@@ -72,59 +128,54 @@
 </script>
 {{end}}
 
-<h2 id="partido">Goles y tarjetas</h2>
-{{if .Data.GoalsMismatch}}<p class="warn">Los goles por jugador ({{.Data.Scored}}) superan los goles del equipo en el resultado ({{$c.GoalsFor.Int64}}).</p>{{end}}
-<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/cards" class="card" id="stats">
-  <ul class="stats">
-  {{range .Data.In}}
-    <li>
-      <div class="stats-name">{{.DisplayName}}</div>
-      <div class="stats-row">
-        <div class="ctl"><span>Goles</span>
-          <span class="stepper"><button type="button" data-step="-1" aria-label="restar gol a {{.DisplayName}}">−</button><input type="number" name="g_{{.ID}}" min="0" max="30" inputmode="numeric" value="{{.Goals}}" aria-label="{{.DisplayName}} goles"><button type="button" data-step="1" aria-label="sumar gol a {{.DisplayName}}">+</button></span>
-        </div>
-        <div class="ctl"><span>Amarillas</span>
-          <span class="seg yellow" role="radiogroup" aria-label="{{.DisplayName}} amarillas">{{$y := .Yellow}}{{$id := .ID}}{{range $n := seq 3}}<label><input type="radio" name="y_{{$id}}" value="{{$n}}" {{if eq $n $y}}checked{{end}}><span>{{$n}}</span></label>{{end}}</span>
-        </div>
-        <div class="ctl"><span>Roja</span>
-          <label class="redbox"><input type="checkbox" name="r_{{.ID}}" value="1" aria-label="{{.DisplayName}} roja" {{if .Red}}checked{{end}}></label>
-        </div>
-        <div class="ctl redgames"><span>Partidos</span>
-          <span class="stepper"><button type="button" data-step="-1" aria-label="menos partidos de sanción">−</button><input type="number" name="rg_{{.ID}}" min="1" max="20" inputmode="numeric" value="{{if .RedGames}}{{.RedGames}}{{else}}1{{end}}" aria-label="{{.DisplayName}} partidos de sanción por roja"><button type="button" data-step="1" aria-label="más partidos de sanción">+</button></span>
-        </div>
-      </div>
-    </li>
-  {{end}}
-  </ul>
-  <p class="sub">2 amarillas = expulsión (1 partido, no suman al ciclo). «Partidos» solo aplica a roja directa. Cada 5 amarillas en la temporada, 1 partido.{{if $c.Friendly}} Amistoso: no cuentan.{{end}}</p>
-  <label class="field"><span>Observaciones del partido</span><textarea name="notes" rows="3" maxlength="4000">{{$c.Notes}}</textarea></label>
-  <button>Guardar goles, tarjetas y observaciones</button>
-</form>
-<script>
-  // Botones − / + de los campos numéricos (goles y partidos de sanción).
-  document.querySelectorAll('#stats .stepper button').forEach(b => b.addEventListener('click', () => {
-    const i = b.parentElement.querySelector('input');
-    i.value = Math.min(+i.max, Math.max(+i.min, (+i.value || 0) + +b.dataset.step));
-  }));
-</script>
 {{else}}
 <p class="empty">Añade jugadores desde la lista de abajo.</p>
 {{end}}
 
-<h2>Disponibles</h2>
+<h2 id="disponibles">Disponibles</h2>
 {{if .Data.Available}}
-<ul class="list">
-  {{range .Data.Available}}
-  <li>
-    <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
-    <span class="grow">{{.DisplayName}} {{template "discipline" .}}{{if .Trainings}} <span class="sub">{{.Percent}}% asist.</span>{{end}}{{template "cycle" .Cycle}}</span>
-    <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/add"><input type="hidden" name="player" value="{{.ID}}"><button class="small">Añadir</button></form>
-  </li>
-  {{end}}
-</ul>
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/add" id="pick">
+  <p class="sub">Marca a los que quieras convocar y pulsa el botón de abajo.</p>
+  <ul class="list">
+    {{range .Data.Available}}
+    <li class="pick{{if .Suspension}} blocked{{end}}">
+      <label>
+        <input type="checkbox" name="player" value="{{.ID}}" aria-label="convocar a {{.DisplayName}}" {{if .Suspension}}disabled title="Sancionado para este partido"{{end}}>
+        <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
+        <span class="grow">{{.DisplayName}} {{template "discipline" .}}{{if .Trainings}} <span class="sub">{{.Percent}}% asist.</span>{{end}}{{template "cycle" .Cycle}}</span>
+      </label>
+    </li>
+    {{end}}
+  </ul>
+  <div class="sticky-save"><button id="pick-btn" disabled>Selecciona jugadores</button></div>
+</form>
+<script>
+  // Contador del botón: cuántos se van a añadir (y el total resultante).
+  const picks = document.querySelectorAll('#pick input[name=player]');
+  const already = {{len .Data.In}};
+  const btn = document.getElementById('pick-btn');
+  const upd = () => {
+    const n = [...picks].filter(p => p.checked).length;
+    btn.disabled = n === 0;
+    btn.textContent = n === 0 ? 'Selecciona jugadores'
+      : `Añadir ${n} seleccionado${n > 1 ? 's' : ''} (total ${already + n})`;
+  };
+  picks.forEach(p => p.addEventListener('change', upd)); upd();
+</script>
 {{else}}
 <p class="empty">Todos convocados.</p>
 {{end}}
+
+<h2 id="resultado">Resultado</h2>
+{{if .Data.GoalsMismatch}}<p class="warn">Los goles por jugador ({{.Data.Scored}}) superan los goles del equipo en el resultado ({{$c.GoalsFor.Int64}}).</p>{{end}}
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/result" class="card">
+  <div class="row">
+    <label class="field"><span>Goles nuestros</span><input type="number" name="goals_for" min="0" max="99" inputmode="numeric" value="{{if $c.GoalsFor.Valid}}{{$c.GoalsFor.Int64}}{{end}}"></label>
+    <label class="field"><span>Goles del rival</span><input type="number" name="goals_against" min="0" max="99" inputmode="numeric" value="{{if $c.GoalsAg.Valid}}{{$c.GoalsAg.Int64}}{{end}}"></label>
+  </div>
+  <label class="field"><span>Observaciones del partido</span><textarea name="notes" rows="3" maxlength="4000">{{$c.Notes}}</textarea></label>
+  <button>Guardar resultado</button>
+</form>
 
 <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/delete" onsubmit="return confirm('¿Borrar esta convocatoria?')" style="margin-top:24px">
   <button class="danger small">Borrar convocatoria</button>

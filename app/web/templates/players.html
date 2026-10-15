@@ -1,10 +1,28 @@
 {{define "content"}}
 {{$t := .Team}}
+<p class="actions"><a class="btn ghost-btn" href="/t/{{$t.ID}}/players/report">Informe PDF</a></p>
 {{with .Data.Scorers}}
 <details class="card" open>
   <summary>Goleadores de la temporada</summary>
   <ol class="scorers">{{range .}}<li><span>{{.Player.DisplayName}}</span><b>{{.Goals}}</b></li>{{end}}</ol>
   <p class="sub">Solo partidos oficiales, desde el 1 de agosto.</p>
+</details>
+{{end}}
+{{with .Data.Sent}}
+<details class="card" open>
+  <summary>Expulsiones y sanciones</summary>
+  <ul class="booked">{{range .}}<li>
+    <span>{{.DisplayName}}{{if .PendingGames}} <span class="badge bad">Sancionado · {{.Suspension}} · {{.PendingGames}} partido{{if gt .PendingGames 1}}s{{end}}</span>{{end}}</span>
+    <b>{{if .Reds}}<span class="card-r" title="rojas directas"></span> {{.Reds}}{{end}}{{if .Doubles}} <span class="card-y">2</span> {{.Doubles}}{{end}}</b>
+  </li>{{end}}</ul>
+  <p class="sub">Rojas directas y dobles amarillas en partidos oficiales de la temporada. «N partidos» = los que le quedan por cumplir.</p>
+</details>
+{{end}}
+{{with .Data.Booked}}
+<details class="card" open>
+  <summary>Amonestados de la temporada</summary>
+  <ul class="booked">{{range .}}<li><span>{{.DisplayName}} {{template "discipline" .}}</span><b><span class="card-y"></span> {{.CycleYellows}}</b></li>{{end}}</ul>
+  <p class="sub">Amarillas del ciclo en partidos oficiales (la doble amarilla no suma). Cada 5, 1 partido de sanción. «Sancionado» = no juega el próximo partido.</p>
 </details>
 {{end}}
 {{if .Data.Players}}
@@ -24,8 +42,13 @@
 {{else}}
 <p class="empty">Todavía no hay jugadores.</p>
 {{end}}
-<h2>Añadir jugador</h2>
-<form method="post" action="/t/{{$t.ID}}/players" class="card">
+
+
+{{/* Plegado: el formulario solo aparece al pulsar el botón (abierto si aún no hay jugadores). */}}
+<details class="add" {{if not .Data.Players}}open{{end}}>
+  <summary class="btn">+ Añadir jugador</summary>
+  <div class="card">
+<form method="post" action="/t/{{$t.ID}}/players">
   <div class="row">
     <label class="field"><span>Nombre *</span><input type="text" name="first_name" required></label>
     <label class="field"><span>Apellido</span><input type="text" name="last_name"></label>
@@ -37,4 +60,6 @@
   <input type="hidden" name="active" value="1">
   <button>Añadir</button>
 </form>
+  </div>
+</details>
 {{end}}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -146,6 +147,26 @@ func TestCanonicalHost(t *testing.T) {
 	}
 }
 
+func TestFetchResponses(t *testing.T) {
+	r := httptest.NewRequest("POST", "/x", nil)
+	r.Header.Set("X-Requested-With", "fetch")
+	rec := httptest.NewRecorder()
+	httpError(rec, r, "dorsal no válido", 400)
+	if rec.Code != 400 || !strings.Contains(rec.Body.String(), `"error":"Dorsal no válido."`) {
+		t.Fatalf("error para fetch: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	redirect(rec, r, "/t/1/callups/2#imagen", 303)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"location":"/t/1/callups/2#imagen"`) {
+		t.Fatalf("redirect para fetch: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	redirect(rec, httptest.NewRequest("POST", "/x", nil), "/y", 303)
+	if rec.Code != 303 {
+		t.Fatalf("sin fetch debe seguir siendo 303: %d", rec.Code)
+	}
+}
+
 func TestRequireRedirects(t *testing.T) {
 	a := &auth{cfg: Config{SessionKey: strings.Repeat("k", 32)}}
 	h := a.require(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("pasó sin sesión") }))
@@ -223,6 +244,10 @@ func TestFlow(t *testing.T) {
 	do("POST", base+"/players", url.Values{"first_name": {"Cristóbal"}, "nickname": {"Cristo"}, "number": {"1"}}, 303)
 	do("POST", base+"/players", url.Values{"first_name": {"Álvaro"}, "number": {"2"}}, 303)
 	do("POST", base+"/players", url.Values{"first_name": {""}}, 400)
+	// Dorsal repetido entre activos: rechazado con el nombre de quien lo tiene.
+	if rec := do("POST", base+"/players", url.Values{"first_name": {"Otro"}, "number": {"1"}}, 409); !strings.Contains(rec.Body.String(), "Cristo") {
+		t.Fatalf("mensaje de dorsal repetido: %s", rec.Body.String())
+	}
 	tpl, _ := parsePages()
 	var buf strings.Builder
 	many := make([]Player, 19)
@@ -235,6 +260,25 @@ func TestFlow(t *testing.T) {
 	ps, err := a.st.players(context.Background(), mustID(t, base), true)
 	if err != nil || len(ps) != 2 {
 		t.Fatalf("players: %v %d", err, len(ps))
+	}
+
+	// Regresión: pasar lista enviado como multipart (lo que hacía app.js) debe
+	// leer los estados, no guardarlos todos como no justificada.
+	trm := do("POST", base+"/trainings", url.Values{"day": {"2026-10-02"}}, 303).Header().Get("Location")
+	{
+		var body strings.Builder
+		mw := multipart.NewWriter(&body)
+		_ = mw.WriteField("st_"+itoa(ps[0].ID), "presente")
+		_ = mw.Close()
+		r := httptest.NewRequest("POST", trm, strings.NewReader(body.String()))
+		r.Header.Set("Content-Type", mw.FormDataContentType())
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, r)
+		att, _ := a.st.attendance(context.Background(), mustID(t, trm))
+		if rec.Code != http.StatusSeeOther || att[ps[0].ID] != Presente {
+			t.Fatalf("pasar lista multipart: %d %v", rec.Code, att)
+		}
+		do("POST", trm+"/delete", nil, 303)
 	}
 
 	// Ciclo: partido el 10/10; entrenos el 6 (ciclo anterior), 14 y 17 (este).
@@ -265,6 +309,8 @@ func TestFlow(t *testing.T) {
 	}
 	do("GET", base+"/trainings", nil, 200)
 
+	// Un amistoso entre medias no corta el ciclo.
+	do("POST", base+"/callups", url.Values{"day": {"2026-10-15"}, "friendly": {"1"}}, 303)
 	cu := do("POST", base+"/callups", url.Values{"day": {"2026-10-18"}, "rival": {"Nerja"}}, 303).Header().Get("Location")
 	since, fromMatch, ts, marks, err := a.st.cycle(context.Background(), mustID(t, base), mustDay(t, "2026-10-18"), false)
 	if err != nil || !fromMatch || since.Format("2006-01-02") != "2026-10-10" || len(ts) != 2 {
@@ -274,9 +320,10 @@ func TestFlow(t *testing.T) {
 		marks[ps[1].ID][ts[0].ID] != Lesionado || marks[ps[1].ID][ts[1].ID] != Injustificado {
 		t.Fatalf("marcas del ciclo: %+v", marks)
 	}
-	do("POST", cu+"/add", url.Values{"player": {itoa(ps[1].ID)}}, 303)
-	do("POST", cu+"/add", url.Values{"player": {itoa(ps[0].ID)}}, 303)
+	// Selección múltiple en un solo envío; el orden enviado es el de la imagen.
+	do("POST", cu+"/add", url.Values{"player": {itoa(ps[1].ID), itoa(ps[0].ID)}}, 303)
 	do("POST", cu+"/add", url.Values{"player": {itoa(ps[0].ID)}}, 303) // idempotente
+	do("POST", cu+"/add", url.Values{"player": {"x"}}, 400)
 	in, err := a.st.callupPlayers(context.Background(), mustID(t, cu))
 	if err != nil || len(in) != 2 || in[0].ID != ps[1].ID {
 		t.Fatalf("orden de convocados: %v %+v", err, in)
@@ -285,9 +332,13 @@ func TestFlow(t *testing.T) {
 
 	// Partido: datos, roles obligatorios para la imagen, resultado y tarjetas.
 	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "rival": {"Nerja"}, "kickoff": {"25:00"}}, 400)
-	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "goals_for": {"2"}}, 400)
+	do("POST", cu+"/result", url.Values{"goals_for": {"2"}}, 400)
 	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "rival": {"Nerja"}, "kickoff": {"11:00"},
-		"meet": {"10:00"}, "home": {"0"}, "place": {"Nerja"}, "goals_for": {"3"}, "goals_against": {"1"}}, 303)
+		"meet": {"10:00"}, "home": {"0"}, "place": {"Nerja"}}, 303)
+	do("POST", cu+"/result", url.Values{"goals_for": {"3"}, "goals_against": {"1"}}, 303)
+	// Editar los datos no borra el resultado.
+	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "rival": {"Nerja"}, "kickoff": {"11:00"},
+		"meet": {"10:00"}, "home": {"0"}, "place": {"Nerja"}}, 303)
 	c, err := a.st.callup(context.Background(), mustID(t, base), mustID(t, cu))
 	if err != nil || c.Score() != "1-3" || c.Outcome() != "G" || c.Kickoff != "11:00" {
 		t.Fatalf("partido: %v %+v", err, c)
@@ -295,9 +346,15 @@ func TestFlow(t *testing.T) {
 	if info := callupInfo(Team{Name: "Cómpeta"}, c); len(info) != 4 || info[0] != "Nerja - Cómpeta" {
 		t.Fatalf("info imagen: %q", info)
 	}
-	do("POST", cu+"/roles", url.Values{"captain": {itoa(ps[0].ID)}, "goalkeeper": {itoa(ps[1].ID)}}, 303)
-	do("POST", cu+"/cards", url.Values{"y_" + itoa(ps[0].ID): {"2"}, "r_" + itoa(ps[1].ID): {"1"},
-		"g_" + itoa(ps[0].ID): {"2"}, "g_" + itoa(ps[1].ID): {"2"}, "notes": {"Buen partido"}}, 303)
+	do("POST", cu+"/roster", url.Values{}, 303) // sin capitán ni porteros: no debe fallar
+	// Portero: sale de la posición POR del perfil, no se marca a mano.
+	do("POST", base+"/players/"+itoa(ps[1].ID), url.Values{"first_name": {"Álvaro"}, "number": {"2"}, "active": {"1"},
+		"main_pos": {"POR"}}, 303)
+	do("POST", cu+"/roster", url.Values{"captain": {itoa(ps[0].ID)}}, 303)
+	do("POST", cu+"/roster", url.Values{"captain": {itoa(ps[0].ID)}, "with_stats": {"1"},
+		"y_" + itoa(ps[0].ID): {"2"}, "r_" + itoa(ps[1].ID): {"1"},
+		"g_" + itoa(ps[0].ID): {"2"}, "g_" + itoa(ps[1].ID): {"2"}}, 303)
+	do("POST", cu+"/result", url.Values{"goals_for": {"3"}, "goals_against": {"1"}, "notes": {"Buen partido"}}, 303)
 	// 4 goles por jugador con 3 en el marcador → aviso; goleadores de la temporada.
 	if body := do("GET", cu, nil, 200).Body.String(); !strings.Contains(body, "superan los goles") || !strings.Contains(body, "Buen partido") {
 		t.Fatal("falta el aviso de goles o las observaciones")
@@ -323,10 +380,11 @@ func TestFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Tras quitar al portero ya no hay portero: la imagen se bloquea.
-	if body := do("GET", cu, nil, 200).Body.String(); strings.Contains(body, "drawCallup(") || !strings.Contains(body, "Marca al capitán") {
+	if body := do("GET", cu, nil, 200).Body.String(); strings.Contains(body, "drawCallup(") || !strings.Contains(body, "al menos a un portero") {
 		t.Fatal("la imagen debería pedir capitán y portero")
 	}
-	do("POST", cu+"/roles", url.Values{"captain": {itoa(ps[0].ID)}, "goalkeeper": {itoa(ps[0].ID)}}, 303)
+	do("POST", base+"/players/"+itoa(ps[0].ID), url.Values{"first_name": {"Cristóbal"}, "nickname": {"Cristo"}, "number": {"1"},
+		"active": {"1"}, "main_pos": {"POR"}}, 303)
 	if !strings.Contains(do("GET", cu, nil, 200).Body.String(), "drawCallup(") {
 		t.Fatal("la convocatoria no pinta la imagen con plantilla y roles")
 	}
@@ -336,6 +394,25 @@ func TestFlow(t *testing.T) {
 	next := do("POST", base+"/callups", url.Values{"day": {"2026-10-25"}}, 303).Header().Get("Location")
 	if body := do("GET", next, nil, 200).Body.String(); !strings.Contains(body, "Sancionado · doble amarilla") {
 		t.Fatal("no aparece la sanción por doble amarilla en el siguiente partido")
+	}
+	// Y no se le puede convocar para ese partido.
+	if rec := do("POST", next+"/add", url.Values{"player": {itoa(ps[0].ID)}}, 409); !strings.Contains(rec.Body.String(), "sancionado") {
+		t.Fatalf("convocar a un sancionado: %s", rec.Body.String())
+	}
+	// Una amarilla simple suma al ciclo → aparece en amonestados.
+	do("POST", next+"/add", url.Values{"player": {itoa(ps[1].ID)}}, 303)
+	do("POST", next+"/roster", url.Values{"with_stats": {"1"}, "y_" + itoa(ps[1].ID): {"1"}}, 303)
+	if body := do("GET", base+"/players/report", nil, 200).Body.String(); !strings.Contains(body, "Informe de jugadores") ||
+		!strings.Contains(body, "window.print()") || strings.Contains(body, "<nav>") {
+		t.Fatal("informe imprimible incompleto")
+	}
+	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "Amonestados de la temporada") {
+		t.Fatal("falta la sección de amonestados")
+	}
+	// Roja directa de 3 partidos en el 25/10 → sección de expulsiones con 3 pendientes.
+	do("POST", next+"/roster", url.Values{"with_stats": {"1"}, "y_" + itoa(ps[1].ID): {"1"}, "r_" + itoa(ps[1].ID): {"1"}, "rg_" + itoa(ps[1].ID): {"3"}}, 303)
+	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "Expulsiones y sanciones") || !strings.Contains(body, "3 partidos") {
+		t.Fatal("falta la sección de expulsiones con los partidos pendientes")
 	}
 	// Si el del 18/10 fue amistoso, las tarjetas no cuentan.
 	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "friendly": {"1"}}, 303)
@@ -359,6 +436,107 @@ func TestFlow(t *testing.T) {
 	if !strings.Contains(do("GET", base+"/players", nil, 200).Body.String(), "5 tardes en los últimos 8") {
 		t.Fatal("falta el aviso de llegadas tarde")
 	}
+
+	// Perfil: solo sus datos (asistencia, partidos, goles, tarjetas).
+	pr, err := a.st.profile(context.Background(), mustID(t, base), ps[0].ID, mustDay(t, "2026-11-10"))
+	if err != nil || pr.Sessions == 0 || pr.ByStatus[Tarde] != 5 || len(pr.Matches) == 0 {
+		t.Fatalf("perfil: %v %+v", err, pr)
+	}
+	if body := do("GET", base+"/players/"+itoa(ps[0].ID), nil, 200).Body.String(); !strings.Contains(body, "asistencia") ||
+		!strings.Contains(body, "Editar valores") {
+		t.Fatal("perfil incompleto")
+	}
+
+	// Selector de equipo: el admin ve los dos equipos en la cabecera.
+	if _, err := a.st.createTeam(context.Background(), "Cadete", "coach@test.dev"); err != nil {
+		t.Fatal(err)
+	}
+	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "team-switch") || !strings.Contains(body, "Cadete") {
+		t.Fatal("falta el selector de equipo con varios equipos")
+	}
+
+	// Posiciones (principal primero) y cualidades del 1 al 10 en pasos de 0,5.
+	do("POST", base+"/players/"+itoa(ps[0].ID), url.Values{"first_name": {"Cristóbal"}, "nickname": {"Cristo"}, "number": {"1"},
+		"active": {"1"}, "main_pos": {"MC"}, "pos": {"DFC", "MC"}}, 303)
+	if p, _ := a.st.player(context.Background(), mustID(t, base), ps[0].ID); p.Positions != "MC,DFC" {
+		t.Fatalf("posiciones: %q", p.Positions)
+	}
+	// Un solo formulario «Editar valores»: datos, posiciones y cualidades.
+	do("GET", base+"/players/"+itoa(ps[0].ID)+"/edit", nil, 200)
+	edit := url.Values{"first_name": {"Cristóbal"}, "nickname": {"Cristo"}, "number": {"1"}, "active": {"1"},
+		"main_pos": {"MC"}, "pos": {"DFC", "MC"}, "with_skills": {"1"}, "pace": {"7,5"}, "passing": {"11"}}
+	do("POST", base+"/players/"+itoa(ps[0].ID), edit, 400) // nota fuera de rango: no se guarda nada
+	edit.Set("passing", "9")
+	edit.Set("defending", "6")
+	edit.Set("observations", "Buen compañero")
+	edit.Set("improve", "Perfil izquierdo")
+	if loc := do("POST", base+"/players/"+itoa(ps[0].ID), edit, 303).Header().Get("Location"); !strings.HasSuffix(loc, "/players/"+itoa(ps[0].ID)) {
+		t.Fatalf("tras editar debe volver al perfil: %q", loc)
+	}
+	if sk, _ := a.st.skills(context.Background(), ps[0].ID); sk["pace"] != 7.5 || sk.Overall() != 7.5 || len(sk) != 3 {
+		t.Fatalf("cualidades: %v overall=%v", sk, sk.Overall())
+	}
+	if body := do("GET", base+"/players/"+itoa(ps[0].ID), nil, 200).Body.String(); !strings.Contains(body, "Perfil izquierdo") {
+		t.Fatal("el perfil no muestra las notas al admin")
+	}
+	if body := do("GET", base+"/players/"+itoa(ps[0].ID), nil, 200).Body.String(); !strings.Contains(body, `class="rating"`) || !strings.Contains(body, "7,5") {
+		t.Fatal("el perfil no muestra las cualidades al admin")
+	}
+
+	// Planteamiento: elegir formación, colocar (solo convocados, sin repetir).
+	do("POST", cu+"/lineup", url.Values{"formation": {"5-5-0"}}, 400)
+	do("POST", cu+"/lineup", url.Values{"formation": {"4-3-3"}}, 303)
+	do("POST", cu+"/lineup", url.Values{"formation": {"4-3-3"}, "slot_0": {itoa(ps[0].ID)}, "slot_7": {itoa(ps[0].ID)}}, 409)
+	do("POST", cu+"/lineup", url.Values{"formation": {"4-3-3"}, "slot_6": {itoa(ps[0].ID)}}, 303)
+	if l, _ := a.st.lineup(context.Background(), mustID(t, cu)); l[6] != ps[0].ID || len(l) != 1 {
+		t.Fatalf("planteamiento: %v", l)
+	}
+	if body := do("GET", cu, nil, 200).Body.String(); !strings.Contains(body, "Guardar planteamiento") || !strings.Contains(body, "Convocados que juegan de MC") {
+		t.Fatal("falta el planteamiento con sugerencias por posición")
+	}
+	// Cambiar de formación vacía los puestos.
+	do("POST", cu+"/lineup", url.Values{"formation": {"3-5-2"}, "slot_6": {itoa(ps[0].ID)}}, 303)
+	if l, _ := a.st.lineup(context.Background(), mustID(t, cu)); len(l) != 0 {
+		t.Fatalf("al cambiar de formación deben vaciarse los puestos: %v", l)
+	}
+
+	// Pizarra: desde formación y desde el planteamiento de un partido; guardar
+	// por JSON acota coordenadas y textos.
+	do("GET", base+"/boards", nil, 200)
+	do("POST", base+"/boards", url.Values{"name": {""}, "origin": {"f:4-4-2"}}, 400)
+	bd := do("POST", base+"/boards", url.Values{"name": {"Salida"}, "origin": {"f:4-4-2"}}, 303).Header().Get("Location")
+	if body := do("GET", bd, nil, 200).Body.String(); !strings.Contains(body, "initBoard") {
+		t.Fatal("la pizarra no carga el editor")
+	}
+	b0, _ := a.st.board(context.Background(), mustID(t, base), mustID(t, bd))
+	if len(b0.State.Tokens) != 11 || b0.State.Tokens[0].Label != "POR" {
+		t.Fatalf("pizarra desde 4-4-2: %+v", b0.State.Tokens)
+	}
+	do("POST", cu+"/lineup", url.Values{"formation": {"4-3-3"}}, 303)
+	do("POST", cu+"/lineup", url.Values{"formation": {"4-3-3"}, "slot_0": {itoa(ps[0].ID)}}, 303)
+	bc := do("POST", base+"/boards", url.Values{"name": {"Del partido"}, "origin": {"c:" + itoa(mustID(t, cu))}}, 303).Header().Get("Location")
+	if b1, _ := a.st.board(context.Background(), mustID(t, base), mustID(t, bc)); b1.State.Tokens[0].Name != "Cristo" {
+		t.Fatalf("pizarra desde planteamiento: %+v", b1.State.Tokens[0])
+	}
+	save := func(body string, want int) {
+		t.Helper()
+		r := httptest.NewRequest("POST", bd, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, r)
+		if rec.Code != want {
+			t.Fatalf("guardar pizarra = %d, want %d: %s", rec.Code, want, rec.Body.String())
+		}
+	}
+	save(`{"name":"Córner","state":{"tokens":[{"label":"9","name":"Nombre larguísimo de más de veinticuatro","x":500,"y":-3}],
+		"ball":{"x":10,"y":10},"arrows":[{"from":{"x":1,"y":1},"to":{"x":30,"y":40}}]}}`, 204)
+	b2, _ := a.st.board(context.Background(), mustID(t, base), mustID(t, bd))
+	if b2.Name != "Córner" || b2.State.Tokens[0].X != pitchW || b2.State.Tokens[0].Y != 0 || len([]rune(b2.State.Tokens[0].Name)) != maxLabel || len(b2.State.Arrows) != 1 {
+		t.Fatalf("pizarra guardada: %+v", b2)
+	}
+	save(`{"name":"","state":{}}`, 400)
+	save(`no es json`, 400)
+	do("POST", bd+"/delete", nil, 303)
 
 	// Otro equipo sin acceso: sin admin no se ve (404).
 	a.auth.devUser = ""
