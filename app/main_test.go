@@ -405,7 +405,7 @@ func TestFlow(t *testing.T) {
 	if sk, _ := a.st.skills(context.Background(), ps[0].ID); sk["pace"] != 7.5 || sk.Overall() != 7.5 || len(sk) != 3 {
 		t.Fatalf("cualidades: %v overall=%v", sk, sk.Overall())
 	}
-	if body := do("GET", base+"/players/"+itoa(ps[0].ID), nil, 200).Body.String(); !strings.Contains(body, "Cualidades (privado)") || !strings.Contains(body, "7,5") {
+	if body := do("GET", base+"/players/"+itoa(ps[0].ID), nil, 200).Body.String(); !strings.Contains(body, `class="rating"`) || !strings.Contains(body, "7,5") {
 		t.Fatal("el perfil no muestra las cualidades al admin")
 	}
 
