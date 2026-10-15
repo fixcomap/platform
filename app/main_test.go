@@ -327,8 +327,11 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("info imagen: %q", info)
 	}
 	do("POST", cu+"/roster", url.Values{}, 303) // sin capitán ni porteros: no debe fallar
-	do("POST", cu+"/roster", url.Values{"captain": {itoa(ps[0].ID)}, "goalkeeper": {itoa(ps[1].ID)}}, 303)
-	do("POST", cu+"/roster", url.Values{"captain": {itoa(ps[0].ID)}, "goalkeeper": {itoa(ps[1].ID)}, "with_stats": {"1"},
+	// Portero: sale de la posición POR del perfil, no se marca a mano.
+	do("POST", base+"/players/"+itoa(ps[1].ID), url.Values{"first_name": {"Álvaro"}, "number": {"2"}, "active": {"1"},
+		"main_pos": {"POR"}}, 303)
+	do("POST", cu+"/roster", url.Values{"captain": {itoa(ps[0].ID)}}, 303)
+	do("POST", cu+"/roster", url.Values{"captain": {itoa(ps[0].ID)}, "with_stats": {"1"},
 		"y_" + itoa(ps[0].ID): {"2"}, "r_" + itoa(ps[1].ID): {"1"},
 		"g_" + itoa(ps[0].ID): {"2"}, "g_" + itoa(ps[1].ID): {"2"}}, 303)
 	do("POST", cu+"/result", url.Values{"goals_for": {"3"}, "goals_against": {"1"}, "notes": {"Buen partido"}}, 303)
@@ -357,10 +360,11 @@ func TestFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Tras quitar al portero ya no hay portero: la imagen se bloquea.
-	if body := do("GET", cu, nil, 200).Body.String(); strings.Contains(body, "drawCallup(") || !strings.Contains(body, "Marca al capitán") {
+	if body := do("GET", cu, nil, 200).Body.String(); strings.Contains(body, "drawCallup(") || !strings.Contains(body, "al menos a un portero") {
 		t.Fatal("la imagen debería pedir capitán y portero")
 	}
-	do("POST", cu+"/roster", url.Values{"captain": {itoa(ps[0].ID)}, "goalkeeper": {itoa(ps[0].ID)}}, 303)
+	do("POST", base+"/players/"+itoa(ps[0].ID), url.Values{"first_name": {"Cristóbal"}, "nickname": {"Cristo"}, "number": {"1"},
+		"active": {"1"}, "main_pos": {"POR"}}, 303)
 	if !strings.Contains(do("GET", cu, nil, 200).Body.String(), "drawCallup(") {
 		t.Fatal("la convocatoria no pinta la imagen con plantilla y roles")
 	}

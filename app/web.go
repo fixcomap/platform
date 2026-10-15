@@ -840,7 +840,8 @@ func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
 	data := map[string]any{"Callup": c, "In": in, "Available": available,
 		"Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)},
 		// La imagen solo se genera con capitán y al menos un portero marcados.
-		"RolesReady": c.Captain.Valid && goalkeepers > 0, "Info": callupInfo(t, c),
+		"RolesReady": c.Captain.Valid && goalkeepers > 0, "HasCaptain": c.Captain.Valid, "HasGK": goalkeepers > 0,
+		"Info":        callupInfo(t, c),
 		"SuspendedIn": suspendedIn, "Formations": formations,
 		// Goles y tarjetas en la lista solo desde el día del partido.
 		"StatsOpen": !c.Day.After(today()),
@@ -920,8 +921,9 @@ func (a *app) editCallup(w http.ResponseWriter, r *http.Request, t Team) {
 	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
 }
 
-// callupRoster guarda la lista de convocados de una vez: capitán, porteros
-// y, desde el día del partido (with_stats), goles y tarjetas de cada uno.
+// callupRoster guarda la lista de convocados de una vez: capitán y, desde el
+// día del partido (with_stats), goles y tarjetas. Los porteros salen solos
+// de la posición POR del perfil.
 func (a *app) callupRoster(w http.ResponseWriter, r *http.Request, t Team) {
 	id, ok := a.callupID(w, r)
 	if !ok {
@@ -932,13 +934,7 @@ func (a *app) callupRoster(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	captain, _ := strconv.ParseInt(r.PostFormValue("captain"), 10, 64)
-	var gks []int64
-	for _, v := range r.PostForm["goalkeeper"] {
-		if pid, err := strconv.ParseInt(v, 10, 64); err == nil {
-			gks = append(gks, pid)
-		}
-	}
-	if err := a.st.setRoles(r.Context(), t.ID, id, captain, gks); err != nil {
+	if err := a.st.setCaptain(r.Context(), t.ID, id, captain); err != nil {
 		a.fail(w, r, err)
 		return
 	}

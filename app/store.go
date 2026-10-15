@@ -720,7 +720,7 @@ func (s store) scorers(ctx context.Context, teamID int64, today time.Time) ([]Sc
 
 func (s store) callupPlayers(ctx context.Context, callupID int64) ([]Player, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active, p.positions, cp.yellow, cp.red, cp.goalkeeper, cp.red_games, cp.goals
+		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active, p.positions, cp.yellow, cp.red, `+isGoalkeeperSQL+`, cp.red_games, cp.goals
 		FROM callup_players cp JOIN players p ON p.id = cp.player_id
 		WHERE cp.callup_id = $1 ORDER BY cp.position`, callupID)
 	if err != nil {
@@ -787,15 +787,10 @@ func (s store) removeFromCallup(ctx context.Context, teamID, callupID, playerID 
 	return tx.Commit()
 }
 
-// setRoles fija capitán (0 = ninguno) y porteros. Ambos deben ser convocados
-// de esta convocatoria; lo garantizan los JOIN/EXISTS contra callup_players.
-func (s store) setRoles(ctx context.Context, teamID, callupID, captain int64, goalkeepers []int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	res, err := tx.ExecContext(ctx, `UPDATE callups c SET captain_id = CASE WHEN EXISTS (
+// setCaptain fija el capitán (0 = ninguno); tiene que ser convocado, lo
+// garantiza el EXISTS contra callup_players.
+func (s store) setCaptain(ctx context.Context, teamID, callupID, captain int64) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE callups c SET captain_id = CASE WHEN EXISTS (
 			SELECT 1 FROM callup_players WHERE callup_id = c.id AND player_id = $3) THEN $3::bigint END
 		WHERE c.team_id = $1 AND c.id = $2`, teamID, callupID, captain)
 	if err != nil {
@@ -804,17 +799,12 @@ func (s store) setRoles(ctx context.Context, teamID, callupID, captain int64, go
 	if n, _ := res.RowsAffected(); n == 0 {
 		return sql.ErrNoRows
 	}
-	// Lista vacía y no nil: pgx manda nil como NULL, y ANY(NULL) dejaría
-	// goalkeeper a NULL (viola NOT NULL) en vez de false.
-	if goalkeepers == nil {
-		goalkeepers = []int64{}
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE callup_players SET goalkeeper = (player_id = ANY($2))
-		WHERE callup_id = $1`, callupID, goalkeepers); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
+
+// isGoalkeeperSQL: portero es quien tiene POR entre sus posiciones del perfil;
+// no se marca a mano en cada convocatoria.
+const isGoalkeeperSQL = `((',' || p.positions || ',') LIKE '%,POR,%')`
 
 type Template struct {
 	Image       []byte
