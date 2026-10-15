@@ -223,6 +223,10 @@ func TestFlow(t *testing.T) {
 	do("POST", base+"/players", url.Values{"first_name": {"Cristóbal"}, "nickname": {"Cristo"}, "number": {"1"}}, 303)
 	do("POST", base+"/players", url.Values{"first_name": {"Álvaro"}, "number": {"2"}}, 303)
 	do("POST", base+"/players", url.Values{"first_name": {""}}, 400)
+	// Dorsal repetido entre activos: rechazado con el nombre de quien lo tiene.
+	if rec := do("POST", base+"/players", url.Values{"first_name": {"Otro"}, "number": {"1"}}, 409); !strings.Contains(rec.Body.String(), "Cristo") {
+		t.Fatalf("mensaje de dorsal repetido: %s", rec.Body.String())
+	}
 	tpl, _ := parsePages()
 	var buf strings.Builder
 	many := make([]Player, 19)

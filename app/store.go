@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -411,6 +412,18 @@ func (s store) player(ctx context.Context, teamID, id int64) (Player, error) {
 		FROM players WHERE team_id = $1 AND id = $2`, teamID, id).
 		Scan(&p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active)
 	return p, err
+}
+
+// numberHolder: jugador activo del equipo que ya lleva ese dorsal (sin
+// contarse a sí mismo). Vacío si está libre.
+func (s store) numberHolder(ctx context.Context, teamID, playerID, number int64) (string, error) {
+	var first, nick string
+	err := s.db.QueryRowContext(ctx, `SELECT first_name, nickname FROM players
+		WHERE team_id = $1 AND number = $2 AND active AND id <> $3 LIMIT 1`, teamID, number, playerID).Scan(&first, &nick)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return Player{FirstName: first, Nickname: nick}.DisplayName(), err
 }
 
 func (s store) savePlayer(ctx context.Context, teamID int64, p Player) error {

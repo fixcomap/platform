@@ -158,3 +158,9 @@ ul.breakdown li b { margin-left: auto; }
 .team-switch ul { position: absolute; z-index: 2; left: 0; top: 100%; margin: 6px 0 0; padding: 6px 0; list-style: none; min-width: 200px;
   background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.15); }
 .team-switch li a { display: block; padding: 10px 14px; text-decoration: none; color: var(--fg); }
+/* Formularios plegados tras un botón. */
+details.add { margin-bottom: 12px; }
+details.add > summary { list-style: none; display: inline-block; }
+details.add > summary::-webkit-details-marker { display: none; }
+details.add[open] > summary { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+details.add > .card { margin-top: 10px; }
