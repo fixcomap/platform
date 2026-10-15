@@ -34,6 +34,13 @@
     </div>
   </fieldset>
   {{end}}
+  {{if .User.Admin}}
+  <fieldset class="field">
+    <legend>Notas privadas (solo admin)</legend>
+    <label class="field"><span>Observaciones</span><textarea name="observations" rows="3" maxlength="4000">{{.Data.Notes.Observations}}</textarea></label>
+    <label class="field"><span>A mejorar</span><textarea name="improve" rows="3" maxlength="4000">{{.Data.Notes.Improve}}</textarea></label>
+  </fieldset>
+  {{end}}
   <div class="sticky-save"><button>Guardar cambios</button></div>
 </form>
 <p><a href="/t/{{.Team.ID}}/players/{{$p.ID}}">Cancelar</a></p>

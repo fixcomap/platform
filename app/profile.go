@@ -20,7 +20,8 @@ type Profile struct {
 	Goals       int
 	YellowTotal int // todas las amarillas en oficiales (incluida la doble)
 	Reds        int
-	Skills      Skills // solo para admin; nil si no se cargan
+	Skills      Skills      // solo para admin; nil si no se cargan
+	Notes       PlayerNotes // solo para admin
 }
 
 type ProfileMatch struct {

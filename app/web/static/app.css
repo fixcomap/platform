@@ -257,3 +257,7 @@ ul.slots select { flex: 1; min-width: 0; }
 .board-head input { flex: 1; }
 .board-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
 .board-tools button.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+#notas h3 { margin: 0 0 4px; font-size: 16px; }
+#notas .sub { margin: 10px 0 2px; }
+#notas .notes { margin: 0; }
+.notes.improve { border-left: 3px solid var(--warn); padding-left: 8px; }
