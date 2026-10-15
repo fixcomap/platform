@@ -289,6 +289,8 @@ func TestFlow(t *testing.T) {
 	}
 	do("GET", base+"/trainings", nil, 200)
 
+	// Un amistoso entre medias no corta el ciclo.
+	do("POST", base+"/callups", url.Values{"day": {"2026-10-15"}, "friendly": {"1"}}, 303)
 	cu := do("POST", base+"/callups", url.Values{"day": {"2026-10-18"}, "rival": {"Nerja"}}, 303).Header().Get("Location")
 	since, fromMatch, ts, marks, err := a.st.cycle(context.Background(), mustID(t, base), mustDay(t, "2026-10-18"), false)
 	if err != nil || !fromMatch || since.Format("2006-01-02") != "2026-10-10" || len(ts) != 2 {

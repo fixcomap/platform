@@ -552,13 +552,15 @@ func (s store) saveAttendance(ctx context.Context, teamID, trainingID int64, not
 }
 
 // cycle devuelve los entrenos del ciclo que acaba en end y las marcas de cada
-// jugador. El ciclo empieza tras el último partido (convocatoria) anterior a
-// end: con una fecha libre no hay convocatoria y el ciclo abarca las dos
+// jugador. El ciclo empieza tras el último partido oficial anterior a end: con
+// una fecha libre (o solo un amistoso) no hay corte y el ciclo abarca las dos
 // semanas. Sin partidos previos, los últimos 14 días. includeEnd: el día end
 // cuenta (hoy en Jugadores; el día del partido no).
 func (s store) cycle(ctx context.Context, teamID int64, end time.Time, includeEnd bool) (time.Time, bool, []Training, map[int64]map[int64]Status, error) {
 	var last sql.NullTime
-	if err := s.db.QueryRowContext(ctx, "SELECT max(day) FROM callups WHERE team_id = $1 AND day < $2",
+	// Solo partidos oficiales cortan el ciclo: un amistoso no cambia qué
+	// entrenos cuentan para el siguiente partido.
+	if err := s.db.QueryRowContext(ctx, "SELECT max(day) FROM callups WHERE team_id = $1 AND day < $2 AND NOT friendly",
 		teamID, end).Scan(&last); err != nil {
 		return time.Time{}, false, nil, nil, err
 	}
