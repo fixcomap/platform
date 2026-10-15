@@ -12,12 +12,13 @@ import (
 // Position: las posiciones que usa el cuerpo técnico.
 type Position struct {
 	Code, Name string
+	X, Y       float64 // sitio en el mini campo del perfil (%, atacando hacia arriba)
 }
 
 var positions = []Position{
-	{"POR", "Portero"}, {"DFC", "Defensa central"}, {"LI", "Lateral izquierdo"}, {"LD", "Lateral derecho"},
-	{"MC", "Mediocampista"}, {"ENG", "Enganche"}, {"VI", "Volante izquierdo"}, {"VD", "Volante derecho"},
-	{"DC", "Delantero"},
+	{"POR", "Portero", 50, 88}, {"DFC", "Defensa central", 50, 70}, {"LI", "Lateral izquierdo", 16, 66},
+	{"LD", "Lateral derecho", 84, 66}, {"MC", "Mediocampista", 50, 50}, {"ENG", "Enganche", 50, 32},
+	{"VI", "Volante izquierdo", 16, 40}, {"VD", "Volante derecho", 84, 40}, {"DC", "Delantero", 50, 14},
 }
 
 func validPosition(code string) bool {
