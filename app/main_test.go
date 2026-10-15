@@ -542,6 +542,27 @@ func TestFlow(t *testing.T) {
 	save(`no es json`, 400)
 	do("POST", bd+"/delete", nil, 303)
 
+	// Borrar jugador: desaparece con su historial; baja ≠ borrar.
+	do("POST", base+"/players", url.Values{"first_name": {"Temporal"}, "number": {"77"}}, 303)
+	var tmpID int64
+	for _, p := range mustPlayers(t, a, mustID(t, base)) {
+		if p.FirstName == "Temporal" {
+			tmpID = p.ID
+		}
+	}
+	do("POST", cu+"/add", url.Values{"player": {itoa(tmpID)}}, 303)
+	do("POST", base+"/players/"+itoa(tmpID)+"/delete", nil, 303)
+	do("GET", base+"/players/"+itoa(tmpID), nil, 404)
+	if in, _ := a.st.callupPlayers(context.Background(), mustID(t, cu)); len(in) == 0 {
+		t.Fatal("borrar a un jugador no debe vaciar la convocatoria de los demás")
+	} else {
+		for _, p := range in {
+			if p.ID == tmpID {
+				t.Fatal("el jugador borrado sigue convocado")
+			}
+		}
+	}
+
 	// Otro equipo sin acceso: sin admin no se ve (404).
 	a.auth.devUser = ""
 	a.auth.cfg = Config{SessionKey: strings.Repeat("k", 32)}
@@ -596,6 +617,15 @@ func mustID(t *testing.T, path string) int64 {
 		t.Fatalf("id de %q: %v", path, err)
 	}
 	return id
+}
+
+func mustPlayers(t *testing.T, a *app, teamID int64) []Player {
+	t.Helper()
+	ps, err := a.st.players(context.Background(), teamID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ps
 }
 
 func mustDay(t *testing.T, s string) time.Time {

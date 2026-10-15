@@ -44,4 +44,14 @@
   <div class="sticky-save"><button>Guardar cambios</button></div>
 </form>
 <p><a href="/t/{{.Team.ID}}/players/{{$p.ID}}">Cancelar</a></p>
+
+{{if .User.Admin}}
+<section class="card danger-zone">
+  <h3>Borrar jugador</h3>
+  <p class="sub">Si se ha ido del equipo, mejor desmarca «En el equipo» (baja): conserva su historial. Borrar elimina para siempre al jugador y todo su historial: asistencias, convocatorias, goles, tarjetas, cualidades y notas.</p>
+  <form method="post" action="/t/{{.Team.ID}}/players/{{$p.ID}}/delete" onsubmit="return confirm('¿Borrar a {{$p.DisplayName}} y todo su historial? No se puede deshacer.')">
+    <button class="danger">Borrar jugador</button>
+  </form>
+</section>
+{{end}}
 {{end}}

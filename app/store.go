@@ -432,6 +432,20 @@ func (s store) numberHolder(ctx context.Context, teamID, playerID, number int64)
 	return Player{FirstName: first, Nickname: nick}.DisplayName(), err
 }
 
+// deletePlayer borra al jugador y, en cascada, todo su historial (asistencia,
+// convocatorias, goles y tarjetas, planteamientos, cualidades y notas). Si era
+// capitán de algún partido, ese partido queda sin capitán (ON DELETE SET NULL).
+func (s store) deletePlayer(ctx context.Context, teamID, id int64) error {
+	res, err := s.db.ExecContext(ctx, "DELETE FROM players WHERE team_id = $1 AND id = $2", teamID, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s store) savePlayer(ctx context.Context, teamID int64, p Player) error {
 	if p.ID == 0 {
 		_, err := s.db.ExecContext(ctx, `INSERT INTO players (team_id, first_name, last_name, nickname, number, positions)
