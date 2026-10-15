@@ -67,3 +67,7 @@
 
 {{/* Disciplina de un jugador: sancionado o apercibido (a una amarilla del ciclo). */}}
 {{define "discipline"}}{{if ge .Late lateAlert}}<span class="badge warnb" title="Llegó tarde {{.Late}} de sus últimos {{lateWindow}} entrenos">{{.Late}} tardes en los últimos {{lateWindow}} · hablar con él</span> {{end}}{{if ge .Streak 2}}<span class="badge warnb" title="{{.Streak}} entrenos seguidos sin venir (sin contar lesiones)">{{.Streak}} faltas seguidas</span> {{end}}{{if .Suspension}}<span class="badge bad" title="Sancionado: {{.Suspension}}">Sancionado · {{.Suspension}}{{if gt .PendingGames 1}} · {{.PendingGames}} partidos{{end}}</span>{{else if eq (mod .CycleYellows 5) 4}}<span class="badge warnb" title="4 amarillas: con la próxima, sanción">Apercibido</span>{{end}}{{end}}
+
+{{/* Líneas del campo (vertical, portería propia abajo): banda, medio campo,
+     círculo central, áreas grande y chica y puntos de penalti. Solo CSS. */}}
+{{define "pitchLines"}}<div class="pitch-lines"><span class="area top"></span><span class="area bottom"></span><span class="garea top"></span><span class="garea bottom"></span><span class="pspot top"></span><span class="pspot bottom"></span><span class="pspot center"></span></div>{{end}}
