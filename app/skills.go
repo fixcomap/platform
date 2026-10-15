@@ -186,3 +186,29 @@ func (s store) saveSkills(ctx context.Context, teamID, playerID int64, sk Skills
 	}
 	return nil
 }
+
+// PlayerNotes: observaciones y aspectos a mejorar; privadas (solo admin).
+type PlayerNotes struct {
+	Observations string
+	Improve      string
+}
+
+func (n PlayerNotes) Empty() bool { return n.Observations == "" && n.Improve == "" }
+
+func (s store) playerNotes(ctx context.Context, playerID int64) (PlayerNotes, error) {
+	var n PlayerNotes
+	err := s.db.QueryRowContext(ctx, "SELECT observations, improve FROM player_notes WHERE player_id = $1",
+		playerID).Scan(&n.Observations, &n.Improve)
+	if errors.Is(err, sql.ErrNoRows) {
+		return n, nil
+	}
+	return n, err
+}
+
+func (s store) savePlayerNotes(ctx context.Context, teamID, playerID int64, n PlayerNotes) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO player_notes (player_id, observations, improve)
+		SELECT id, $3, $4 FROM players WHERE team_id = $1 AND id = $2
+		ON CONFLICT (player_id) DO UPDATE SET observations = EXCLUDED.observations,
+		improve = EXCLUDED.improve, updated_at = now()`, teamID, playerID, n.Observations, n.Improve)
+	return err
+}

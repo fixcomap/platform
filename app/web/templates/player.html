@@ -41,6 +41,18 @@
 </section>
 {{end}}
 
+{{if .User.Admin}}
+<section class="card" id="notas">
+  <h3>Notas</h3>
+  {{if $pr.Notes.Empty}}
+  <p class="sub">Sin notas. Añádelas en «Editar valores».</p>
+  {{else}}
+  {{with $pr.Notes.Observations}}<p class="sub">Observaciones</p><p class="notes">{{.}}</p>{{end}}
+  {{with $pr.Notes.Improve}}<p class="sub">A mejorar</p><p class="notes improve">{{.}}</p>{{end}}
+  {{end}}
+</section>
+{{end}}
+
 <h2>Entrenos</h2>
 {{if $pr.Sessions}}
 <ul class="breakdown">

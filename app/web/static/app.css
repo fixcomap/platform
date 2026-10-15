@@ -273,3 +273,7 @@ ul.roster li { flex-direction: column; align-items: stretch; gap: 6px; }
 .roster-ctl .stepper.redgames { display: none; }
 .roster-ctl .redbox:has(input:checked) + .stepper.redgames { display: inline-flex; }
 li.pick.blocked label { cursor: not-allowed; opacity: .6; }
+#notas h3 { margin: 0 0 4px; font-size: 16px; }
+#notas .sub { margin: 10px 0 2px; }
+#notas .notes { margin: 0; }
+.notes.improve { border-left: 3px solid var(--warn); padding-left: 8px; }
