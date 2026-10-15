@@ -1,0 +1,7 @@
+# Landing de fixcomap.com.
+repo: fixcomap/web
+type: static
+static:
+  pages_project: fixcomap-landing
+  site_dir: public
+  hostnames: [fixcomap.com, www.fixcomap.com]

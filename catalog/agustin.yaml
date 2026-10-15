@@ -1,0 +1,7 @@
+# Portfolio de Agustín Prieto.
+repo: fixcomap/agustin
+type: static
+static:
+  pages_project: fixcomap-agustin
+  site_dir: public
+  hostnames: [agustin.fixcomap.com]

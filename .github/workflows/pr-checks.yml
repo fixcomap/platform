@@ -41,6 +41,36 @@ jobs:
           esac
           echo "$HEAD" | grep -Eq "$pat" || { echo "'$HEAD' no puede mergearse en '$BASE' (patrón: $pat)"; exit 1; }
 
+  catalog:
+    name: catalog (esquema)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Lo que cicd.yml e infra/dns dan por hecho de cada catalog/<repo>.yaml.
+      - run: |
+          err=0
+          fail() { echo "::error file=$1::$2"; err=1; }
+          for f in catalog/*.yaml; do
+            name=$(basename "$f" .yaml)
+            [ "$(yq -r '.repo' "$f")" = "fixcomap/$name" ] || fail "$f" "repo debe ser fixcomap/$name (nombre del fichero = repo)"
+            case "$(yq -r '.type' "$f")" in
+              static)
+                [ "$(yq -r '.static.pages_project // ""' "$f")" != "" ] || fail "$f" "falta static.pages_project"
+                [ "$(yq -r '.static.hostnames | length' "$f")" -gt 0 ] || fail "$f" "falta static.hostnames"
+                ;;
+              *) fail "$f" "type desconocido (static)" ;;
+            esac
+          done
+          dup=$(yq -N -r '.static.hostnames[]?' catalog/*.yaml | sort | uniq -d)
+          [ -z "$dup" ] || fail catalog "hostnames repetidos: $dup"
+          dup=$(yq -N -r '.static.pages_project | select(. != null)' catalog/*.yaml | sort | uniq -d)
+          [ -z "$dup" ] || fail catalog "pages_project repetidos: $dup"
+          exit "$err"
+
   app:
     name: app (lint + test)
     runs-on: ubuntu-latest
