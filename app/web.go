@@ -56,8 +56,20 @@ var funcs = template.FuncMap{
 		}
 		return out
 	},
-	"lateAlert":  func() int { return lateAlert },
-	"mod":        func(a, b int) int { return a % b },
+	"lateAlert": func() int { return lateAlert },
+	"mod":       func(a, b int) int { return a % b },
+	"positions": func() []Position { return positions },
+	"skillDefs": func() []Skill { return skills },
+	"score":     fmtScore,
+	"hexGuide":  hexGuide,
+	"hexLevels": func() []float64 { return []float64{2, 4, 6, 8, 10} },
+	"hexLabel":  hexLabel,
+	"scoreOf": func(s Skills, k string) string {
+		if v, ok := s[k]; ok {
+			return fmtScore(v)
+		}
+		return ""
+	},
 	"add":        func(a, b int) int { return a + b },
 	"lateWindow": func() int { return lateWindow },
 }
@@ -265,6 +277,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	t("POST /t/{team}/players", a.savePlayer)
 	t("GET /t/{team}/players/{player}", a.playerPage)
 	t("POST /t/{team}/players/{player}", a.savePlayer)
+	t("POST /t/{team}/players/{player}/skills", adminOnly(a.saveSkills))
 	t("GET /t/{team}/trainings", a.trainingsPage)
 	t("POST /t/{team}/trainings", a.createTraining)
 	t("GET /t/{team}/trainings/{training}", a.trainingPage)
@@ -418,7 +431,40 @@ func (a *app) playerPage(w http.ResponseWriter, r *http.Request, t Team) {
 	pr.Player.CycleYellows = disc.Yellows[id]
 	pr.Player.Streak = streak[id]
 	pr.Player.Late = late[id]
+	// Cualidades: privadas del cuerpo técnico, solo para admin.
+	if currentUser(r.Context()).Admin {
+		sk, err := a.st.skills(r.Context(), id)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		pr.Skills = sk
+	}
 	a.render(w, r, "player", view{Team: &t, Tab: "players", Title: pr.Player.DisplayName(), Data: pr})
+}
+
+func (a *app) saveSkills(w http.ResponseWriter, r *http.Request, t Team) {
+	id, err := pathID(r, "player")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	sk := Skills{}
+	for _, k := range skills {
+		v, ok, err := parseScore(r.FormValue(k.Key))
+		if err != nil {
+			http.Error(w, k.Name+": "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if ok {
+			sk[k.Key] = v
+		}
+	}
+	if err := a.st.saveSkills(r.Context(), t.ID, id, sk); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, teamURL(t, "/players/"+strconv.FormatInt(id, 10)+"#cualidades"), http.StatusSeeOther)
 }
 
 func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
@@ -428,6 +474,29 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 		Nickname:  strings.TrimSpace(r.FormValue("nickname")),
 		Active:    r.FormValue("active") != "",
 	}
+	// Posiciones: casillas "pos"; la principal (radio "main") va primera.
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "formulario inválido", http.StatusBadRequest)
+		return
+	}
+	var pos []string
+	if m := r.PostFormValue("main_pos"); m != "" {
+		if !validPosition(m) {
+			http.Error(w, "posición inválida", http.StatusBadRequest)
+			return
+		}
+		pos = append(pos, m)
+	}
+	for _, c := range r.PostForm["pos"] {
+		if !validPosition(c) {
+			http.Error(w, "posición inválida", http.StatusBadRequest)
+			return
+		}
+		if len(pos) == 0 || pos[0] != c {
+			pos = append(pos, c)
+		}
+	}
+	p.Positions = strings.Join(pos, ",")
 	if p.FirstName == "" {
 		http.Error(w, "el nombre es obligatorio", http.StatusBadRequest)
 		return

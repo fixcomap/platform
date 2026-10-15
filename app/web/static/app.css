@@ -164,3 +164,29 @@ details.add > summary { list-style: none; display: inline-block; }
 details.add > summary::-webkit-details-marker { display: none; }
 details.add[open] > summary { background: transparent; color: var(--accent); border: 1px solid var(--line); }
 details.add > .card { margin-top: 10px; }
+
+/* Posiciones */
+.pos-chips { margin: 6px 0 0; display: flex; gap: 4px; flex-wrap: wrap; }
+.pos { font-size: 12px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+.pos.main { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+fieldset.positions { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+fieldset.positions legend { font-size: 14px; color: var(--muted); padding: 0 4px; }
+.pos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.pos-opt { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; }
+.pos-opt input { width: 18px; height: 18px; accent-color: var(--accent); }
+/* Cualidades: carta y hexágono */
+.skills-view { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: center; margin: 12px 0; }
+.fut { width: 160px; padding: 14px 12px; border-radius: 14px 14px 40px 40px; color: #2b2410;
+  background: linear-gradient(160deg, #f7e7a6, #d9b85c 60%, #b8913a); box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+.fut-top { display: flex; flex-direction: column; line-height: 1; }
+.fut-top b { font-size: 34px; }
+.fut-top span { font-size: 14px; font-weight: 700; }
+.fut-name { text-align: center; font-weight: 800; font-size: 16px; margin: 10px 0 8px; border-bottom: 1px solid rgba(0,0,0,.2); padding-bottom: 6px; }
+.fut-stats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 13px; }
+.fut-stats b { display: inline-block; min-width: 26px; text-align: right; }
+svg.hex { width: 220px; max-width: 100%; }
+svg.hex .guide { fill: none; stroke: var(--line); stroke-width: 1; }
+svg.hex .value { fill: rgba(59,47,143,.35); stroke: var(--accent); stroke-width: 2; }
+svg.hex text { font-size: 11px; font-weight: 700; fill: var(--fg); text-anchor: middle; dominant-baseline: middle; }
+.skills-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0 10px; align-items: end; }
+.skills-form button { grid-column: 1 / -1; }
