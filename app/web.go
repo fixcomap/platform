@@ -547,7 +547,7 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 		Active:    r.FormValue("active") != "",
 	}
 	// Posiciones: casillas "pos"; la principal (radio "main") va primera.
-	if err := r.ParseForm(); err != nil {
+	if err := parseForm(r); err != nil {
 		httpError(w, r, "No se pudo leer el formulario. Vuelve a intentarlo.", http.StatusBadRequest)
 		return
 	}
@@ -709,7 +709,7 @@ func (a *app) saveAttendance(w http.ResponseWriter, r *http.Request, t Team) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := parseForm(r); err != nil {
 		httpError(w, r, "No se pudo leer el formulario. Vuelve a intentarlo.", http.StatusBadRequest)
 		return
 	}
@@ -964,7 +964,7 @@ func (a *app) callupRoster(w http.ResponseWriter, r *http.Request, t Team) {
 	if !ok {
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := parseForm(r); err != nil {
 		httpError(w, r, "No se pudo leer el formulario. Vuelve a intentarlo.", http.StatusBadRequest)
 		return
 	}
@@ -1097,7 +1097,7 @@ func (a *app) callupAdd(w http.ResponseWriter, r *http.Request, t Team) {
 	if !ok {
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := parseForm(r); err != nil {
 		httpError(w, r, "No se pudo leer el formulario. Vuelve a intentarlo.", http.StatusBadRequest)
 		return
 	}
