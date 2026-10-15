@@ -171,9 +171,6 @@ details.add > .card { margin-top: 10px; }
 .pos.main { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 fieldset.positions { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 fieldset.positions legend { font-size: 14px; color: var(--muted); padding: 0 4px; }
-.pos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
-.pos-opt { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; }
-.pos-opt input { width: 18px; height: 18px; accent-color: var(--accent); }
 /* Cualidades: carta y hexágono */
 .skills-view { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: center; margin: 12px 0; }
 .skills h3 { margin: 0 0 4px; font-size: 16px; }
@@ -210,3 +207,19 @@ svg.hex text { font-size: 11px; font-weight: 700; fill: var(--fg); text-anchor: 
 ul.slots { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }
 ul.slots li { display: flex; align-items: center; gap: 6px; }
 ul.slots select { flex: 1; min-width: 0; }
+
+/* Selector de posiciones en mini campo. */
+.mini-pitch { position: relative; width: 100%; max-width: 320px; aspect-ratio: 68 / 90; margin: 8px auto 4px; border-radius: 10px; overflow: hidden;
+  background: repeating-linear-gradient(180deg, #2f8a3e 0 10%, #2a7d38 10% 20%); }
+.ppos { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column-reverse; align-items: center; gap: 0; }
+.ppos input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.ppos-btn span { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+  font-size: 12px; font-weight: 800; background: rgba(255,255,255,.85); color: #1d1a2e; border: 2px solid transparent;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35); transition: background .15s, color .15s; }
+.ppos-btn input:checked + span { background: var(--accent); color: #fff; border-color: #fff; }
+.ppos-btn input:focus-visible + span, .ppos-star input:focus-visible + span { outline: 2px solid #fff; outline-offset: 2px; }
+.ppos-star span { display: grid; place-items: center; width: 28px; height: 22px; cursor: pointer; font-size: 18px; line-height: 1;
+  color: rgba(255,255,255,.75); text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.ppos-star span::before { content: "☆"; }
+.ppos-star input:checked + span { color: #f5c518; }
+.ppos-star input:checked + span::before { content: "★"; }

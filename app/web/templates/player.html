@@ -91,14 +91,17 @@
     <label class="field"><span>Apodo (sale en la convocatoria)</span><input type="text" name="nickname" value="{{$p.Nickname}}"></label>
     <label class="field"><span>Dorsal</span><input type="number" name="number" min="0" max="999" inputmode="numeric" value="{{if $p.Number.Valid}}{{$p.Number.Int64}}{{end}}"></label>
     <fieldset class="field positions">
-      <legend>Posiciones (marca todas; ● = principal)</legend>
-      <div class="pos-grid">
-      {{range positions}}
-        <span class="pos-opt" title="{{.Name}}">
-          <input type="radio" name="main_pos" value="{{.Code}}" aria-label="{{.Name}} como principal" {{if and $p.PositionList (eq (index $p.PositionList 0) .Code)}}checked{{end}}>
-          <label><input type="checkbox" name="pos" value="{{.Code}}" {{if $p.HasPosition .Code}}checked{{end}}> {{.Code}}</label>
-        </span>
-      {{end}}
+      <legend>Posiciones: toca las que puede jugar; ★ = posición fija</legend>
+      {{/* Mini campo: casilla por posición (se pinta al marcarla) y radio con
+           estrella para la fija. Solo CSS. */}}
+      <div class="mini-pitch">
+        <div class="pitch-lines"></div>
+        {{range positions}}
+        <div class="ppos" style="left:{{.X}}%;top:{{.Y}}%">
+          <label class="ppos-btn" title="{{.Name}}"><input type="checkbox" name="pos" value="{{.Code}}" {{if $p.HasPosition .Code}}checked{{end}}><span>{{.Code}}</span></label>
+          <label class="ppos-star" title="{{.Name}} como posición fija"><input type="radio" name="main_pos" value="{{.Code}}" aria-label="{{.Name}} como posición fija" {{if and $p.PositionList (eq (index $p.PositionList 0) .Code)}}checked{{end}}><span></span></label>
+        </div>
+        {{end}}
       </div>
     </fieldset>
     <label class="field check-inline"><input type="checkbox" name="active" value="1" {{if $p.Active}}checked{{end}}> En el equipo (desmarcar = baja; se conserva su historial)</label>
