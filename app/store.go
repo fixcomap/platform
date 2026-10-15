@@ -119,7 +119,10 @@ type Player struct {
 	// Disciplina: motivo si está sancionado para el partido que se mira y
 	// amarillas del ciclo acumuladas antes de él (4 = apercibido).
 	Suspension   string
+	PendingGames int // partidos de sanción que le quedan
 	CycleYellows int
+	Reds         int // rojas directas en la temporada
+	Doubles      int // dobles amarillas en la temporada
 	// Faltas seguidas más recientes sin contar lesiones (2+ = aviso).
 	Streak int
 	// Llegadas tarde en sus últimos lateWindow entrenos (lateAlert+ = aviso).

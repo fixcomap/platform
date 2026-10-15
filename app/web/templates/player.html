@@ -14,7 +14,7 @@
   <div class="tile"><b>{{$pr.AttendancePct}}%</b><span>asistencia<br><small>{{$pr.Came}} de {{$pr.Sessions}} entrenos</small></span></div>
   <div class="tile"><b>{{$pr.CalledUp}}</b><span>convocatorias<br><small>de {{$pr.Official}} partidos</small></span></div>
   <div class="tile"><b>{{$pr.Goals}}</b><span>goles</span></div>
-  <div class="tile"><b><span class="card-y"></span> {{$pr.YellowTotal}}{{if $pr.Reds}} <span class="card-r"></span> {{$pr.Reds}}{{end}}</b><span>tarjetas<br><small>{{$p.CycleYellows}} en el ciclo de 5</small></span></div>
+  <div class="tile"><b><span class="card-y"></span> {{$pr.YellowTotal}}{{if $pr.Reds}} <span class="card-r"></span> {{$pr.Reds}}{{end}}</b><span>tarjetas<br><small>{{$p.CycleYellows}} en el ciclo de 5{{if $p.PendingGames}} · {{$p.PendingGames}} partido{{if gt $p.PendingGames 1}}s{{end}} de sanción pendiente{{if gt $p.PendingGames 1}}s{{end}}{{end}}</small></span></div>
 </div>
 
 <h2>Entrenos</h2>
