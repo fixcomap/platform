@@ -409,6 +409,23 @@ func TestFlow(t *testing.T) {
 		t.Fatal("el perfil no muestra las cualidades al admin")
 	}
 
+	// Planteamiento: elegir formación, colocar (solo convocados, sin repetir).
+	do("POST", cu+"/lineup", url.Values{"formation": {"5-5-0"}}, 400)
+	do("POST", cu+"/lineup", url.Values{"formation": {"4-3-3"}}, 303)
+	do("POST", cu+"/lineup", url.Values{"formation": {"4-3-3"}, "slot_0": {itoa(ps[0].ID)}, "slot_7": {itoa(ps[0].ID)}}, 409)
+	do("POST", cu+"/lineup", url.Values{"formation": {"4-3-3"}, "slot_6": {itoa(ps[0].ID)}}, 303)
+	if l, _ := a.st.lineup(context.Background(), mustID(t, cu)); l[6] != ps[0].ID || len(l) != 1 {
+		t.Fatalf("planteamiento: %v", l)
+	}
+	if body := do("GET", cu, nil, 200).Body.String(); !strings.Contains(body, "Guardar planteamiento") || !strings.Contains(body, "Juegan de MC") {
+		t.Fatal("falta el planteamiento con sugerencias por posición")
+	}
+	// Cambiar de formación vacía los puestos.
+	do("POST", cu+"/lineup", url.Values{"formation": {"3-5-2"}, "slot_6": {itoa(ps[0].ID)}}, 303)
+	if l, _ := a.st.lineup(context.Background(), mustID(t, cu)); len(l) != 0 {
+		t.Fatalf("al cambiar de formación deben vaciarse los puestos: %v", l)
+	}
+
 	// Otro equipo sin acceso: sin admin no se ve (404).
 	a.auth.devUser = ""
 	a.auth.cfg = Config{SessionKey: strings.Repeat("k", 32)}
