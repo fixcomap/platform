@@ -382,6 +382,10 @@ func TestFlow(t *testing.T) {
 	// Una amarilla simple suma al ciclo → aparece en amonestados.
 	do("POST", next+"/add", url.Values{"player": {itoa(ps[1].ID)}}, 303)
 	do("POST", next+"/roster", url.Values{"with_stats": {"1"}, "y_" + itoa(ps[1].ID): {"1"}}, 303)
+	if body := do("GET", base+"/players/report", nil, 200).Body.String(); !strings.Contains(body, "Informe de jugadores") ||
+		!strings.Contains(body, "window.print()") || strings.Contains(body, "<nav>") {
+		t.Fatal("informe imprimible incompleto")
+	}
 	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "Amonestados de la temporada") {
 		t.Fatal("falta la sección de amonestados")
 	}
