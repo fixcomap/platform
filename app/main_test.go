@@ -274,9 +274,10 @@ func TestFlow(t *testing.T) {
 		marks[ps[1].ID][ts[0].ID] != Lesionado || marks[ps[1].ID][ts[1].ID] != Injustificado {
 		t.Fatalf("marcas del ciclo: %+v", marks)
 	}
-	do("POST", cu+"/add", url.Values{"player": {itoa(ps[1].ID)}}, 303)
-	do("POST", cu+"/add", url.Values{"player": {itoa(ps[0].ID)}}, 303)
+	// Selección múltiple en un solo envío; el orden enviado es el de la imagen.
+	do("POST", cu+"/add", url.Values{"player": {itoa(ps[1].ID), itoa(ps[0].ID)}}, 303)
 	do("POST", cu+"/add", url.Values{"player": {itoa(ps[0].ID)}}, 303) // idempotente
+	do("POST", cu+"/add", url.Values{"player": {"x"}}, 400)
 	in, err := a.st.callupPlayers(context.Background(), mustID(t, cu))
 	if err != nil || len(in) != 2 || in[0].ID != ps[1].ID {
 		t.Fatalf("orden de convocados: %v %+v", err, in)

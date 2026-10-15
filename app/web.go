@@ -784,8 +784,35 @@ func (a *app) callupAction(w http.ResponseWriter, r *http.Request, t Team,
 	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#lista"), http.StatusSeeOther)
 }
 
+// callupAdd añade de una vez los jugadores marcados en Disponibles y lleva a
+// capitán y porteros: el siguiente paso antes de la imagen.
 func (a *app) callupAdd(w http.ResponseWriter, r *http.Request, t Team) {
-	a.callupAction(w, r, t, func(tid, cid, pid int64) error { return a.st.addToCallup(r.Context(), tid, cid, pid) })
+	cid, ok := a.callupID(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "formulario inválido", http.StatusBadRequest)
+		return
+	}
+	var ids []int64
+	for _, v := range r.PostForm["player"] {
+		pid, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			http.Error(w, "jugador inválido", http.StatusBadRequest)
+			return
+		}
+		ids = append(ids, pid)
+	}
+	if len(ids) == 0 {
+		http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#disponibles"), http.StatusSeeOther)
+		return
+	}
+	if err := a.st.addToCallup(r.Context(), t.ID, cid, ids); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#imagen"), http.StatusSeeOther)
 }
 
 func (a *app) callupRemove(w http.ResponseWriter, r *http.Request, t Team) {

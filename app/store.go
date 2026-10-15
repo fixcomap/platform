@@ -712,8 +712,24 @@ func (s store) callupPlayers(ctx context.Context, callupID int64) ([]Player, err
 
 // addToCallup comprueba en la misma sentencia que convocatoria y jugador son
 // del equipo: los ids llegan del formulario y no son de fiar.
-func (s store) addToCallup(ctx context.Context, teamID, callupID, playerID int64) error {
-	_, err := s.db.ExecContext(ctx, `
+// addToCallup añade varios jugadores en una transacción, en el orden dado
+// (orden de la imagen). Los ya convocados se ignoran.
+func (s store) addToCallup(ctx context.Context, teamID, callupID int64, playerIDs []int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, pid := range playerIDs {
+		if err := addOneToCallup(ctx, tx, teamID, callupID, pid); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func addOneToCallup(ctx context.Context, tx *sql.Tx, teamID, callupID, playerID int64) error {
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO callup_players (callup_id, player_id, position)
 		SELECT c.id, p.id, COALESCE((SELECT max(position) FROM callup_players WHERE callup_id = c.id), 0) + 1
 		FROM callups c JOIN players p ON p.team_id = c.team_id
