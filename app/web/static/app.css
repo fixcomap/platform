@@ -277,3 +277,5 @@ li.pick.blocked label { cursor: not-allowed; opacity: .6; }
 #notas .sub { margin: 10px 0 2px; }
 #notas .notes { margin: 0; }
 .notes.improve { border-left: 3px solid var(--warn); padding-left: 8px; }
+.danger-zone { margin-top: 32px; border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+.danger-zone h3 { margin: 0 0 4px; font-size: 16px; color: var(--bad); }
