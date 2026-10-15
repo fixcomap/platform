@@ -7,6 +7,13 @@
   <p class="sub">Solo partidos oficiales, desde el 1 de agosto.</p>
 </details>
 {{end}}
+{{with .Data.Booked}}
+<details class="card" open>
+  <summary>Amonestados de la temporada</summary>
+  <ul class="booked">{{range .}}<li><span>{{.DisplayName}} {{template "discipline" .}}</span><b><span class="card-y"></span> {{.CycleYellows}}</b></li>{{end}}</ul>
+  <p class="sub">Amarillas del ciclo en partidos oficiales (la doble amarilla no suma). Cada 5, 1 partido de sanción. «Sancionado» = no juega el próximo partido.</p>
+</details>
+{{end}}
 {{if .Data.Players}}
 {{template "cycleHead" .Data.Cycle}}
 <ul class="list">

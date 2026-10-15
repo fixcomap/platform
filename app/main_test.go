@@ -338,6 +338,12 @@ func TestFlow(t *testing.T) {
 	if body := do("GET", next, nil, 200).Body.String(); !strings.Contains(body, "Sancionado · doble amarilla") {
 		t.Fatal("no aparece la sanción por doble amarilla en el siguiente partido")
 	}
+	// Una amarilla simple suma al ciclo → aparece en amonestados.
+	do("POST", next+"/add", url.Values{"player": {itoa(ps[1].ID)}}, 303)
+	do("POST", next+"/cards", url.Values{"y_" + itoa(ps[1].ID): {"1"}}, 303)
+	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "Amonestados de la temporada") {
+		t.Fatal("falta la sección de amonestados")
+	}
 	// Si el del 18/10 fue amistoso, las tarjetas no cuentan.
 	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "friendly": {"1"}}, 303)
 	if body := do("GET", next, nil, 200).Body.String(); strings.Contains(body, "Sancionado") {

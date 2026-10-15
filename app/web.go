@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -55,7 +56,34 @@ var funcs = template.FuncMap{
 		return out
 	},
 	"lateAlert":  func() int { return lateAlert },
+	"mod":        func(a, b int) int { return a % b },
 	"lateWindow": func() int { return lateWindow },
+}
+
+// booked: amonestados de la temporada, con sancionados y apercibidos primero.
+func booked(ps []Player) []Player {
+	var out []Player
+	for _, p := range ps {
+		if p.Active && (p.CycleYellows > 0 || p.Suspension != "") {
+			out = append(out, p)
+		}
+	}
+	rank := func(p Player) int {
+		switch {
+		case p.Suspension != "":
+			return 0
+		case p.CycleYellows%yellowCycle == yellowCycle-1:
+			return 1
+		}
+		return 2
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if rank(out[i]) != rank(out[j]) {
+			return rank(out[i]) < rank(out[j])
+		}
+		return out[i].CycleYellows > out[j].CycleYellows
+	})
+	return out
 }
 
 // withCycle rellena Player.Cycle con una marca por entreno del ciclo.
@@ -326,6 +354,7 @@ func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	a.render(w, r, "players", view{Team: &t, Tab: "players", Title: "Jugadores", Data: map[string]any{
 		"Players": ps, "Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)}, "Scorers": scorers,
+		"Booked": booked(ps),
 	}})
 }
 
