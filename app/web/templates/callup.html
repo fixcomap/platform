@@ -58,7 +58,7 @@
 
 <h2 id="planteamiento">Planteamiento</h2>
 <p class="sub">Cómo salimos. Solo se puede elegir entre los {{len .Data.In}} convocados. Queda guardado con el partido; no sale en la imagen.</p>
-<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/lineup" class="card">
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/lineup" class="card" id="lineup">
   <div class="row">
     <label class="field"><span>Formación</span>
       <select name="formation">
@@ -70,15 +70,15 @@
   {{with .Data.Lineup}}
   <div class="pitch" aria-label="Campo con el once">
     {{template "pitchLines"}}
-    {{range .}}<div class="spot" style="left:{{.Slot.X}}%;top:{{.Slot.Y}}%"><span class="dot">{{.Slot.Code}}</span><span class="who">{{with .Player}}{{.DisplayName}}{{else}}—{{end}}</span></div>{{end}}
+    {{range .}}<div class="spot" style="left:{{.Slot.X}}%;top:{{.Slot.Y}}%"><span class="dot">{{.Slot.Code}}</span><span class="who" data-slot="{{.Index}}">{{with .Player}}{{.DisplayName}}{{else}}—{{end}}</span></div>{{end}}
   </div>
   <ul class="slots">
     {{range .}}{{$ls := .}}
     <li><span class="pos main">{{.Slot.Code}}</span>
       <select name="slot_{{.Index}}" aria-label="Jugador en {{.Slot.Code}}">
         <option value="">—</option>
-        {{with .Suggest}}<optgroup label="Convocados que juegan de {{$ls.Slot.Code}}">{{range .}}<option value="{{.ID}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
-        {{with .Others}}<optgroup label="Otros convocados (otra posición)">{{range .}}<option value="{{.ID}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{with .PositionList}} ({{index . 0}}){{end}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
+        {{with .Suggest}}<optgroup label="Convocados que juegan de {{$ls.Slot.Code}}">{{range .}}<option value="{{.ID}}" data-name="{{.DisplayName}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
+        {{with .Others}}<optgroup label="Otros convocados (otra posición)">{{range .}}<option value="{{.ID}}" data-name="{{.DisplayName}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{with .PositionList}} ({{index . 0}}){{end}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
       </select>
     </li>
     {{end}}
@@ -86,6 +86,27 @@
   {{with $.Data.Bench}}<p class="sub">Suplentes: {{range $i, $p := .}}{{if $i}}, {{end}}{{$p.DisplayName}}{{end}}</p>{{end}}
   <button>Guardar planteamiento</button>
   <p class="sub">Si cambias la formación, al guardar se vacían los puestos para colocarlos de nuevo.</p>
+  <script>
+    // Un jugador colocado deja de ofrecerse en los demás puestos (vuelve si se
+    // le quita); el campo se actualiza al momento. El servidor también lo valida.
+    (() => {
+      const sels = [...document.querySelectorAll('#lineup select[name^="slot_"]')];
+      const sync = () => {
+        const used = new Set(sels.map(s => s.value).filter(Boolean));
+        for (const s of sels) {
+          for (const o of s.options) {
+            const taken = o.value && o.value !== s.value && used.has(o.value);
+            o.disabled = taken;
+            o.hidden = taken;
+          }
+          const who = document.querySelector('#lineup .who[data-slot="' + s.name.slice(5) + '"]');
+          if (who) who.textContent = s.value ? s.selectedOptions[0].dataset.name : '—';
+        }
+      };
+      sels.forEach(s => s.addEventListener('change', sync));
+      sync();
+    })();
+  </script>
   {{else}}
   <button>Usar formación</button>
   {{end}}
