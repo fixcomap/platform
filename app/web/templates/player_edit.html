@@ -11,7 +11,7 @@
       {{/* Mini campo: casilla por posición (se pinta al marcarla) y radio con
            estrella para la fija. Solo CSS. */}}
       <div class="mini-pitch">
-        <div class="pitch-lines"></div>
+        {{template "pitchLines"}}
         {{range positions}}
         <div class="ppos" style="left:{{.X}}%;top:{{.Y}}%">
           <label class="ppos-btn" title="{{.Name}}"><input type="checkbox" name="pos" value="{{.Code}}" {{if $p.HasPosition .Code}}checked{{end}}><span>{{.Code}}</span></label>

@@ -69,7 +69,7 @@
   </div>
   {{with .Data.Lineup}}
   <div class="pitch" aria-label="Campo con el once">
-    <div class="pitch-lines"></div>
+    {{template "pitchLines"}}
     {{range .}}<div class="spot" style="left:{{.Slot.X}}%;top:{{.Slot.Y}}%"><span class="dot">{{.Slot.Code}}</span><span class="who">{{with .Player}}{{.DisplayName}}{{else}}—{{end}}</span></div>{{end}}
   </div>
   <ul class="slots">
