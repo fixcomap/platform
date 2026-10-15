@@ -31,9 +31,13 @@ document.addEventListener("submit", async (e) => {
   const btn = e.submitter;
   if (btn) btn.disabled = true;
   try {
+    // Formularios normales en urlencoded (como los envía el navegador sin
+    // JS); solo los que suben ficheros van en multipart.
+    const fd = new FormData(form, btn);
+    const body = form.enctype === "multipart/form-data" ? fd : new URLSearchParams(fd);
     const res = await fetch(form.action, {
       method: "POST",
-      body: new FormData(form, btn),
+      body,
       headers: { "X-Requested-With": "fetch" },
     });
     const isJSON = (res.headers.get("Content-Type") || "").includes("application/json");

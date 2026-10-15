@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"unicode"
@@ -26,6 +27,17 @@ func sentence(s string) string {
 // Los formularios se envían con fetch desde app.js (cabecera X-Requested-With:
 // fetch) para que un error se muestre como aviso sin salir de la página y sin
 // perder lo escrito. Sin JavaScript, el comportamiento es el clásico.
+
+// parseForm lee el cuerpo en cualquiera de los dos formatos de formulario
+// (urlencoded o multipart). r.ParseForm solo entiende urlencoded: con un
+// envío multipart dejaba r.PostForm vacío sin dar error.
+func parseForm(r *http.Request) error {
+	err := r.ParseMultipartForm(8 << 20)
+	if errors.Is(err, http.ErrNotMultipart) {
+		return r.ParseForm()
+	}
+	return err
+}
 
 func isFetch(r *http.Request) bool { return r.Header.Get("X-Requested-With") == "fetch" }
 

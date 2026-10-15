@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -259,6 +260,25 @@ func TestFlow(t *testing.T) {
 	ps, err := a.st.players(context.Background(), mustID(t, base), true)
 	if err != nil || len(ps) != 2 {
 		t.Fatalf("players: %v %d", err, len(ps))
+	}
+
+	// Regresión: pasar lista enviado como multipart (lo que hacía app.js) debe
+	// leer los estados, no guardarlos todos como no justificada.
+	trm := do("POST", base+"/trainings", url.Values{"day": {"2026-10-02"}}, 303).Header().Get("Location")
+	{
+		var body strings.Builder
+		mw := multipart.NewWriter(&body)
+		_ = mw.WriteField("st_"+itoa(ps[0].ID), "presente")
+		_ = mw.Close()
+		r := httptest.NewRequest("POST", trm, strings.NewReader(body.String()))
+		r.Header.Set("Content-Type", mw.FormDataContentType())
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, r)
+		att, _ := a.st.attendance(context.Background(), mustID(t, trm))
+		if rec.Code != http.StatusSeeOther || att[ps[0].ID] != Presente {
+			t.Fatalf("pasar lista multipart: %d %v", rec.Code, att)
+		}
+		do("POST", trm+"/delete", nil, 303)
 	}
 
 	// Ciclo: partido el 10/10; entrenos el 6 (ciclo anterior), 14 y 17 (este).
