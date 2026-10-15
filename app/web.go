@@ -1247,7 +1247,8 @@ func (a *app) settingsPage(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	data := map[string]any{"Coaches": cs}
+	// Tras subir la plantilla o guardar su posición se vuelve con la sección abierta.
+	data := map[string]any{"Coaches": cs, "OpenImage": r.URL.Query().Has("imagen")}
 	if l, at, err := a.layout(r, t.ID); err == nil {
 		data["Layout"] = l
 		data["TemplateVersion"] = at.Unix()
@@ -1384,7 +1385,7 @@ func (a *app) uploadTemplate(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/settings"), http.StatusSeeOther)
+	http.Redirect(w, r, teamURL(t, "/settings?imagen#imagen"), http.StatusSeeOther)
 }
 
 func (a *app) saveLayout(w http.ResponseWriter, r *http.Request, t Team) {
@@ -1398,7 +1399,7 @@ func (a *app) saveLayout(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/settings"), http.StatusSeeOther)
+	http.Redirect(w, r, teamURL(t, "/settings?imagen#imagen"), http.StatusSeeOther)
 }
 
 func (a *app) templateImage(w http.ResponseWriter, r *http.Request, t Team) {
