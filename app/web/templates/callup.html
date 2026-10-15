@@ -57,7 +57,7 @@
 </form>
 
 <h2 id="planteamiento">Planteamiento</h2>
-<p class="sub">Cómo salimos. Queda guardado con el partido; no sale en la imagen.</p>
+<p class="sub">Cómo salimos. Solo se puede elegir entre los {{len .Data.In}} convocados. Queda guardado con el partido; no sale en la imagen.</p>
 <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/lineup" class="card">
   <div class="row">
     <label class="field"><span>Formación</span>
@@ -77,8 +77,8 @@
     <li><span class="pos main">{{.Slot.Code}}</span>
       <select name="slot_{{.Index}}" aria-label="Jugador en {{.Slot.Code}}">
         <option value="">—</option>
-        {{with .Suggest}}<optgroup label="Juegan de {{$ls.Slot.Code}}">{{range .}}<option value="{{.ID}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
-        {{with .Others}}<optgroup label="Resto de convocados">{{range .}}<option value="{{.ID}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{with .PositionList}} ({{index . 0}}){{end}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
+        {{with .Suggest}}<optgroup label="Convocados que juegan de {{$ls.Slot.Code}}">{{range .}}<option value="{{.ID}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
+        {{with .Others}}<optgroup label="Otros convocados (otra posición)">{{range .}}<option value="{{.ID}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{with .PositionList}} ({{index . 0}}){{end}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
       </select>
     </li>
     {{end}}

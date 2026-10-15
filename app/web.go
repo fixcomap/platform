@@ -194,11 +194,11 @@ func (a *app) render(w http.ResponseWriter, r *http.Request, page string, v view
 
 func (a *app) fail(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, sql.ErrNoRows) {
-		http.NotFound(w, r)
+		httpError(w, r, "No encontrado: puede que se haya borrado.", http.StatusNotFound)
 		return
 	}
 	logger(r.Context()).Error("request", "path", r.URL.Path, "err", err)
-	http.Error(w, "error interno", http.StatusInternalServerError)
+	httpError(w, r, "Error interno. Vuelve a intentarlo en un momento.", http.StatusInternalServerError)
 }
 
 // canonicalHost redirige cualquier otro hostname (los antiguos, *.run.app) al
@@ -219,7 +219,7 @@ func canonicalHost(baseURL string, next http.Handler) http.Handler {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			code = http.StatusPermanentRedirect
 		}
-		http.Redirect(w, r, baseURL+r.URL.RequestURI(), code)
+		redirect(w, r, baseURL+r.URL.RequestURI(), code)
 	})
 }
 
@@ -311,7 +311,7 @@ func (a *app) routes(mux *http.ServeMux) {
 func adminOnly(h func(http.ResponseWriter, *http.Request, Team)) func(http.ResponseWriter, *http.Request, Team) {
 	return func(w http.ResponseWriter, r *http.Request, t Team) {
 		if !currentUser(r.Context()).Admin {
-			http.Error(w, "solo un admin puede cambiar los ajustes", http.StatusForbidden)
+			httpError(w, r, "Solo un admin puede cambiar los ajustes.", http.StatusForbidden)
 			return
 		}
 		h(w, r, t)
@@ -335,7 +335,7 @@ func (a *app) home(w http.ResponseWriter, r *http.Request) {
 	}
 	// Lo normal es un solo equipo: directo a pasar lista.
 	if len(teams) == 1 && !u.Admin {
-		http.Redirect(w, r, "/t/"+strconv.FormatInt(teams[0].ID, 10), http.StatusSeeOther)
+		redirect(w, r, "/t/"+strconv.FormatInt(teams[0].ID, 10), http.StatusSeeOther)
 		return
 	}
 	a.render(w, r, "home", view{Title: "Equipos", Data: teams})
@@ -345,7 +345,7 @@ func (a *app) createTeam(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r.Context())
 	name := strings.TrimSpace(r.FormValue("name"))
 	if !u.Admin || name == "" {
-		http.Error(w, "no permitido", http.StatusForbidden)
+		httpError(w, r, "No tienes permiso para hacer esto.", http.StatusForbidden)
 		return
 	}
 	id, err := a.st.createTeam(r.Context(), name, u.Email)
@@ -353,7 +353,7 @@ func (a *app) createTeam(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, "/t/"+strconv.FormatInt(id, 10)+"/settings", http.StatusSeeOther)
+	redirect(w, r, "/t/"+strconv.FormatInt(id, 10)+"/settings", http.StatusSeeOther)
 }
 
 func teamURL(t Team, rest string) string {
@@ -361,7 +361,7 @@ func teamURL(t Team, rest string) string {
 }
 
 func (a *app) teamHome(w http.ResponseWriter, r *http.Request, t Team) {
-	http.Redirect(w, r, teamURL(t, "/trainings"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/trainings"), http.StatusSeeOther)
 }
 
 func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
@@ -507,20 +507,20 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	// Posiciones: casillas "pos"; la principal (radio "main") va primera.
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "formulario inválido", http.StatusBadRequest)
+		httpError(w, r, "No se pudo leer el formulario. Vuelve a intentarlo.", http.StatusBadRequest)
 		return
 	}
 	var pos []string
 	if m := r.PostFormValue("main_pos"); m != "" {
 		if !validPosition(m) {
-			http.Error(w, "posición inválida", http.StatusBadRequest)
+			httpError(w, r, "Posición no válida.", http.StatusBadRequest)
 			return
 		}
 		pos = append(pos, m)
 	}
 	for _, c := range r.PostForm["pos"] {
 		if !validPosition(c) {
-			http.Error(w, "posición inválida", http.StatusBadRequest)
+			httpError(w, r, "Posición no válida.", http.StatusBadRequest)
 			return
 		}
 		if len(pos) == 0 || pos[0] != c {
@@ -529,13 +529,13 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	p.Positions = strings.Join(pos, ",")
 	if p.FirstName == "" {
-		http.Error(w, "el nombre es obligatorio", http.StatusBadRequest)
+		httpError(w, r, "El nombre es obligatorio.", http.StatusBadRequest)
 		return
 	}
 	if n := strings.TrimSpace(r.FormValue("number")); n != "" {
 		v, err := strconv.ParseInt(n, 10, 32)
 		if err != nil || v < 0 || v > 999 {
-			http.Error(w, "dorsal inválido", http.StatusBadRequest)
+			httpError(w, r, "Dorsal no válido (0 a 999).", http.StatusBadRequest)
 			return
 		}
 		p.Number = sql.NullInt64{Int64: v, Valid: true}
@@ -555,7 +555,7 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 			return
 		}
 		if holder != "" {
-			http.Error(w, fmt.Sprintf("El dorsal %d ya lo tiene %s.", p.Number.Int64, holder), http.StatusConflict)
+			httpError(w, r, fmt.Sprintf("El dorsal %d ya lo tiene %s.", p.Number.Int64, holder), http.StatusConflict)
 			return
 		}
 	}
@@ -565,11 +565,11 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 	if withSkills {
 		var err error
 		if sk, err = skillsForm(r); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, r, err.Error(), http.StatusBadRequest)
 			return
 		}
 		if len(r.PostFormValue("observations")) > 4000 || len(r.PostFormValue("improve")) > 4000 {
-			http.Error(w, "notas demasiado largas (máx. 4000 caracteres)", http.StatusBadRequest)
+			httpError(w, r, "notas demasiado largas (máx. 4000 caracteres)", http.StatusBadRequest)
 			return
 		}
 	}
@@ -590,10 +590,10 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 		}
 	}
 	if p.ID != 0 {
-		http.Redirect(w, r, teamURL(t, "/players/"+strconv.FormatInt(p.ID, 10)), http.StatusSeeOther)
+		redirect(w, r, teamURL(t, "/players/"+strconv.FormatInt(p.ID, 10)), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/players"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/players"), http.StatusSeeOther)
 }
 
 func (a *app) trainingsPage(w http.ResponseWriter, r *http.Request, t Team) {
@@ -612,7 +612,7 @@ func parseDay(s string) (time.Time, error) { return time.Parse("2006-01-02", s) 
 func (a *app) createTraining(w http.ResponseWriter, r *http.Request, t Team) {
 	day, err := parseDay(r.FormValue("day"))
 	if err != nil {
-		http.Error(w, "fecha inválida", http.StatusBadRequest)
+		httpError(w, r, "Fecha no válida.", http.StatusBadRequest)
 		return
 	}
 	id, err := a.st.createTraining(r.Context(), t.ID, day)
@@ -620,7 +620,7 @@ func (a *app) createTraining(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/trainings/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/trainings/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
 }
 
 type attendanceRow struct {
@@ -669,7 +669,7 @@ func (a *app) saveAttendance(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "formulario inválido", http.StatusBadRequest)
+		httpError(w, r, "No se pudo leer el formulario. Vuelve a intentarlo.", http.StatusBadRequest)
 		return
 	}
 	// Un campo por jugador: st_<id>=presente|lesionado|justificado|injustificado.
@@ -681,7 +681,7 @@ func (a *app) saveAttendance(w http.ResponseWriter, r *http.Request, t Team) {
 		}
 		pid, err := strconv.ParseInt(pidStr, 10, 64)
 		if err != nil || !validStatus(Status(v[0])) {
-			http.Error(w, "estado inválido", http.StatusBadRequest)
+			httpError(w, r, "Estado de asistencia no válido.", http.StatusBadRequest)
 			return
 		}
 		status[pid] = Status(v[0])
@@ -690,7 +690,7 @@ func (a *app) saveAttendance(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/trainings"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/trainings"), http.StatusSeeOther)
 }
 
 func (a *app) deleteTraining(w http.ResponseWriter, r *http.Request, t Team) {
@@ -703,7 +703,7 @@ func (a *app) deleteTraining(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/trainings"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/trainings"), http.StatusSeeOther)
 }
 
 func (a *app) callupsPage(w http.ResponseWriter, r *http.Request, t Team) {
@@ -723,7 +723,7 @@ var hhmm = regexp.MustCompile(`^([01][0-9]|2[0-3]):[0-5][0-9]$`)
 func callupForm(r *http.Request) (Callup, error) {
 	day, err := parseDay(r.FormValue("day"))
 	if err != nil {
-		return Callup{}, errors.New("fecha inválida")
+		return Callup{}, errors.New("fecha no válida")
 	}
 	c := Callup{Day: day, Rival: strings.TrimSpace(r.FormValue("rival")), Place: strings.TrimSpace(r.FormValue("place"))}
 	for _, f := range []struct {
@@ -732,7 +732,7 @@ func callupForm(r *http.Request) (Callup, error) {
 	}{{&c.Kickoff, "kickoff"}, {&c.Meet, "meet"}} {
 		v := strings.TrimSpace(r.FormValue(f.name))
 		if v != "" && !hhmm.MatchString(v) {
-			return Callup{}, errors.New("hora inválida")
+			return Callup{}, errors.New("hora no válida (formato HH:MM)")
 		}
 		*f.dst = v
 	}
@@ -749,7 +749,7 @@ func callupForm(r *http.Request) (Callup, error) {
 func (a *app) createCallup(w http.ResponseWriter, r *http.Request, t Team) {
 	c, err := callupForm(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		httpError(w, r, err.Error(), http.StatusBadRequest)
 		return
 	}
 	id, err := a.st.createCallup(r.Context(), t.ID, c)
@@ -757,7 +757,7 @@ func (a *app) createCallup(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
 }
 
 func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
@@ -901,21 +901,21 @@ func (a *app) editCallup(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	c, err := callupForm(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		httpError(w, r, err.Error(), http.StatusBadRequest)
 		return
 	}
 	c.ID = id
 	// Resultado: los dos goles o ninguno (partido sin jugar).
 	gf, ga := strings.TrimSpace(r.FormValue("goals_for")), strings.TrimSpace(r.FormValue("goals_against"))
 	if (gf == "") != (ga == "") {
-		http.Error(w, "resultado incompleto: faltan los goles de uno de los dos", http.StatusBadRequest)
+		httpError(w, r, "Resultado incompleto: faltan los goles de uno de los dos equipos.", http.StatusBadRequest)
 		return
 	}
 	if gf != "" {
 		f, err1 := strconv.ParseInt(gf, 10, 32)
 		g, err2 := strconv.ParseInt(ga, 10, 32)
 		if err1 != nil || err2 != nil || f < 0 || g < 0 || f > 99 || g > 99 {
-			http.Error(w, "resultado inválido", http.StatusBadRequest)
+			httpError(w, r, "Resultado no válido.", http.StatusBadRequest)
 			return
 		}
 		c.GoalsFor = sql.NullInt64{Int64: f, Valid: true}
@@ -925,7 +925,7 @@ func (a *app) editCallup(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
 }
 
 func (a *app) callupRoles(w http.ResponseWriter, r *http.Request, t Team) {
@@ -934,7 +934,7 @@ func (a *app) callupRoles(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "formulario inválido", http.StatusBadRequest)
+		httpError(w, r, "No se pudo leer el formulario. Vuelve a intentarlo.", http.StatusBadRequest)
 		return
 	}
 	captain, _ := strconv.ParseInt(r.PostFormValue("captain"), 10, 64)
@@ -948,7 +948,7 @@ func (a *app) callupRoles(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#imagen"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#imagen"), http.StatusSeeOther)
 }
 
 // callupLineup guarda formación y puestos (slot_0..slot_10 = id de jugador).
@@ -959,7 +959,7 @@ func (a *app) callupLineup(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	f, ok := formationByName(r.FormValue("formation"))
 	if !ok {
-		http.Error(w, "formación inválida", http.StatusBadRequest)
+		httpError(w, r, "Formación no válida.", http.StatusBadRequest)
 		return
 	}
 	slots := map[int]int64{}
@@ -970,20 +970,20 @@ func (a *app) callupLineup(w http.ResponseWriter, r *http.Request, t Team) {
 		}
 		pid, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			http.Error(w, "jugador inválido", http.StatusBadRequest)
+			httpError(w, r, "Jugador no válido.", http.StatusBadRequest)
 			return
 		}
 		slots[i] = pid
 	}
 	if err := a.st.saveLineup(r.Context(), t.ID, id, f.Name, slots); err != nil {
 		if errors.Is(err, errDuplicatePlayer) {
-			http.Error(w, "Un jugador no puede ocupar dos puestos. Vuelve atrás y corrígelo.", http.StatusConflict)
+			httpError(w, r, "Un jugador no puede ocupar dos puestos.", http.StatusConflict)
 			return
 		}
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#planteamiento"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#planteamiento"), http.StatusSeeOther)
 }
 
 func (a *app) callupCards(w http.ResponseWriter, r *http.Request, t Team) {
@@ -993,7 +993,7 @@ func (a *app) callupCards(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	notes := strings.TrimSpace(r.FormValue("notes"))
 	if len(notes) > 4000 {
-		http.Error(w, "observaciones demasiado largas", http.StatusBadRequest)
+		httpError(w, r, "Observaciones demasiado largas (máx. 4000 caracteres).", http.StatusBadRequest)
 		return
 	}
 	if err := a.st.setCallupNotes(r.Context(), t.ID, id, notes); err != nil {
@@ -1024,7 +1024,7 @@ func (a *app) callupCards(w http.ResponseWriter, r *http.Request, t Team) {
 			return
 		}
 	}
-	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#partido"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#partido"), http.StatusSeeOther)
 }
 
 func (a *app) callupAction(w http.ResponseWriter, r *http.Request, t Team,
@@ -1036,7 +1036,7 @@ func (a *app) callupAction(w http.ResponseWriter, r *http.Request, t Team,
 	}
 	pid, err := strconv.ParseInt(r.FormValue("player"), 10, 64)
 	if err != nil {
-		http.Error(w, "jugador inválido", http.StatusBadRequest)
+		httpError(w, r, "Jugador no válido.", http.StatusBadRequest)
 		return
 	}
 	if err := f(t.ID, cid, pid); err != nil {
@@ -1044,7 +1044,7 @@ func (a *app) callupAction(w http.ResponseWriter, r *http.Request, t Team,
 		return
 	}
 	// El ancla deja la página donde estaba tras añadir: se convoca a varios seguidos.
-	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#lista"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#lista"), http.StatusSeeOther)
 }
 
 // callupAdd añade de una vez los jugadores marcados en Disponibles y lleva a
@@ -1055,27 +1055,27 @@ func (a *app) callupAdd(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "formulario inválido", http.StatusBadRequest)
+		httpError(w, r, "No se pudo leer el formulario. Vuelve a intentarlo.", http.StatusBadRequest)
 		return
 	}
 	var ids []int64
 	for _, v := range r.PostForm["player"] {
 		pid, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			http.Error(w, "jugador inválido", http.StatusBadRequest)
+			httpError(w, r, "Jugador no válido.", http.StatusBadRequest)
 			return
 		}
 		ids = append(ids, pid)
 	}
 	if len(ids) == 0 {
-		http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#disponibles"), http.StatusSeeOther)
+		redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#disponibles"), http.StatusSeeOther)
 		return
 	}
 	if err := a.st.addToCallup(r.Context(), t.ID, cid, ids); err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#imagen"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#imagen"), http.StatusSeeOther)
 }
 
 func (a *app) callupRemove(w http.ResponseWriter, r *http.Request, t Team) {
@@ -1092,7 +1092,7 @@ func (a *app) deleteCallup(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/callups"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/callups"), http.StatusSeeOther)
 }
 
 func (a *app) boardsPage(w http.ResponseWriter, r *http.Request, t Team) {
@@ -1123,7 +1123,7 @@ func (a *app) boardsPage(w http.ResponseWriter, r *http.Request, t Team) {
 func (a *app) createBoard(w http.ResponseWriter, r *http.Request, t Team) {
 	name := cut(strings.TrimSpace(r.FormValue("name")))
 	if name == "" {
-		http.Error(w, "la pizarra necesita un nombre", http.StatusBadRequest)
+		httpError(w, r, "La pizarra necesita un nombre.", http.StatusBadRequest)
 		return
 	}
 	var st BoardState
@@ -1132,14 +1132,14 @@ func (a *app) createBoard(w http.ResponseWriter, r *http.Request, t Team) {
 	case strings.HasPrefix(origin, "f:"):
 		f, ok := formationByName(origin[2:])
 		if !ok {
-			http.Error(w, "formación inválida", http.StatusBadRequest)
+			httpError(w, r, "Formación no válida.", http.StatusBadRequest)
 			return
 		}
 		st = stateFromFormation(f, nil)
 	case strings.HasPrefix(origin, "c:"):
 		cid, err := strconv.ParseInt(origin[2:], 10, 64)
 		if err != nil {
-			http.Error(w, "convocatoria inválida", http.StatusBadRequest)
+			httpError(w, r, "Convocatoria no válida.", http.StatusBadRequest)
 			return
 		}
 		c, err := a.st.callup(r.Context(), t.ID, cid)
@@ -1149,7 +1149,7 @@ func (a *app) createBoard(w http.ResponseWriter, r *http.Request, t Team) {
 		}
 		f, ok := formationByName(c.Formation)
 		if !ok {
-			http.Error(w, "esa convocatoria no tiene planteamiento", http.StatusBadRequest)
+			httpError(w, r, "Esa convocatoria no tiene planteamiento.", http.StatusBadRequest)
 			return
 		}
 		assigned, err := a.st.lineup(r.Context(), cid)
@@ -1180,7 +1180,7 @@ func (a *app) createBoard(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/boards/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/boards/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
 }
 
 func (a *app) boardPage(w http.ResponseWriter, r *http.Request, t Team) {
@@ -1209,16 +1209,16 @@ func (a *app) saveBoard(w http.ResponseWriter, r *http.Request, t Team) {
 		State BoardState `json:"state"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&in); err != nil {
-		http.Error(w, "pizarra inválida", http.StatusBadRequest)
+		httpError(w, r, "Pizarra no válida.", http.StatusBadRequest)
 		return
 	}
 	in.Name = cut(strings.TrimSpace(in.Name))
 	if in.Name == "" {
-		http.Error(w, "la pizarra necesita un nombre", http.StatusBadRequest)
+		httpError(w, r, "La pizarra necesita un nombre.", http.StatusBadRequest)
 		return
 	}
 	if err := in.State.sanitize(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		httpError(w, r, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if err := a.st.saveBoard(r.Context(), t.ID, id, in.Name, in.State); err != nil {
@@ -1238,7 +1238,7 @@ func (a *app) deleteBoard(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/boards"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/boards"), http.StatusSeeOther)
 }
 
 func (a *app) settingsPage(w http.ResponseWriter, r *http.Request, t Team) {
@@ -1262,28 +1262,28 @@ func (a *app) settingsPage(w http.ResponseWriter, r *http.Request, t Team) {
 func (a *app) addCoach(w http.ResponseWriter, r *http.Request, t Team) {
 	email := normEmail(r.FormValue("email"))
 	if !strings.Contains(email, "@") {
-		http.Error(w, "email inválido", http.StatusBadRequest)
+		httpError(w, r, "Email no válido.", http.StatusBadRequest)
 		return
 	}
 	if err := a.st.addCoach(r.Context(), t.ID, email); err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/settings"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/settings"), http.StatusSeeOther)
 }
 
 func (a *app) removeCoach(w http.ResponseWriter, r *http.Request, t Team) {
 	email := normEmail(r.FormValue("email"))
 	// Quitarse a uno mismo dejaría el equipo huérfano o al usuario fuera sin querer.
 	if email == currentUser(r.Context()).Email {
-		http.Error(w, "no puedes quitarte a ti mismo", http.StatusBadRequest)
+		httpError(w, r, "No puedes quitarte a ti mismo.", http.StatusBadRequest)
 		return
 	}
 	if err := a.st.removeCoach(r.Context(), t.ID, email); err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/settings"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/settings"), http.StatusSeeOther)
 }
 
 // Layout de los nombres en coordenadas relativas a la imagen (0..1), medido
@@ -1356,20 +1356,20 @@ func (a *app) uploadTemplate(w http.ResponseWriter, r *http.Request, t Team) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxTemplateBytes+(64<<10))
 	f, _, err := r.FormFile("image")
 	if err != nil {
-		http.Error(w, "imagen inválida o mayor de 5 MB", http.StatusBadRequest)
+		httpError(w, r, "Imagen no válida o mayor de 5 MB.", http.StatusBadRequest)
 		return
 	}
 	defer func() { _ = f.Close() }()
 	img, err := io.ReadAll(f)
 	if err != nil {
-		http.Error(w, "imagen inválida o mayor de 5 MB", http.StatusBadRequest)
+		httpError(w, r, "Imagen no válida o mayor de 5 MB.", http.StatusBadRequest)
 		return
 	}
 	// El tipo se deduce del contenido, no de lo que diga el cliente: luego se
 	// sirve con ese Content-Type.
 	ct := http.DetectContentType(img)
 	if ct != "image/png" && ct != "image/jpeg" && ct != "image/webp" {
-		http.Error(w, "solo PNG, JPEG o WebP", http.StatusBadRequest)
+		httpError(w, r, "La imagen tiene que ser PNG, JPEG o WebP.", http.StatusBadRequest)
 		return
 	}
 	// Al cambiar la imagen se conserva el layout ajustado si ya existía.
@@ -1385,13 +1385,13 @@ func (a *app) uploadTemplate(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/settings?imagen#imagen"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/settings?imagen#imagen"), http.StatusSeeOther)
 }
 
 func (a *app) saveLayout(w http.ResponseWriter, r *http.Request, t Team) {
 	var l Layout
 	if err := json.Unmarshal([]byte(r.FormValue("layout")), &l); err != nil || !l.valid() {
-		http.Error(w, "layout inválido", http.StatusBadRequest)
+		httpError(w, r, "Posición de la imagen no válida.", http.StatusBadRequest)
 		return
 	}
 	b, _ := json.Marshal(l)
@@ -1399,7 +1399,7 @@ func (a *app) saveLayout(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, teamURL(t, "/settings?imagen#imagen"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/settings?imagen#imagen"), http.StatusSeeOther)
 }
 
 func (a *app) templateImage(w http.ResponseWriter, r *http.Request, t Team) {
