@@ -198,15 +198,25 @@ svg.hex text { font-size: 11px; font-weight: 700; fill: var(--fg); text-anchor: 
 .pitch, .mini-pitch { --pline: color-mix(in srgb, var(--accent) 55%, transparent);
   position: relative; width: 100%; aspect-ratio: 68 / 90; border-radius: 12px; overflow: hidden;
   background: color-mix(in srgb, var(--accent) 7%, transparent); border: 1px solid var(--pline); }
-.pitch { margin: 12px 0; }
+.pitch { margin: 12px auto; max-width: 300px; }
 .pitch-lines { position: absolute; inset: 4%; border: 1.5px solid var(--pline); border-radius: 4px; }
 .pitch-lines::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1.5px solid var(--pline); }
 .pitch-lines::after { content: ""; position: absolute; left: 50%; top: 50%; width: 22%; aspect-ratio: 1; transform: translate(-50%, -50%);
   border: 1.5px solid var(--pline); border-radius: 50%; }
-.spot { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 3px; width: 80px; }
-.spot .dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 800;
+/* Áreas: proporciones reglamentarias aproximadas sobre el campo acortado. */
+.pitch-lines .area, .pitch-lines .garea { position: absolute; border: 1.5px solid var(--pline); }
+.pitch-lines .area { left: 21%; width: 58%; height: 16%; }
+.pitch-lines .garea { left: 36%; width: 28%; height: 6%; }
+.pitch-lines .top { top: -1.5px; border-top: 0; }
+.pitch-lines .bottom { bottom: -1.5px; border-bottom: 0; }
+.pitch-lines .pspot { position: absolute; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--pline); }
+.pitch-lines .pspot.top { top: 11%; border: 0; }
+.pitch-lines .pspot.bottom { bottom: 11%; top: auto; border: 0; }
+.pitch-lines .pspot.center { top: 50%; margin-top: -2px; }
+.spot { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 2px; width: 70px; }
+.spot .dot { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800;
   background: var(--card); color: var(--accent); border: 1.5px solid var(--accent); }
-.spot .who { font-size: 12px; font-weight: 700; color: var(--fg); text-align: center; line-height: 1.1; }
+.spot .who { font-size: 11px; font-weight: 700; color: var(--fg); text-align: center; line-height: 1.1; }
 ul.slots { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }
 ul.slots li { display: flex; align-items: center; gap: 6px; }
 ul.slots select { flex: 1; min-width: 0; }
