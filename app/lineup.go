@@ -23,33 +23,33 @@ type Formation struct {
 func back4() []Slot {
 	return []Slot{
 		{"POR", 50, 90, []string{"POR"}},
-		{"LD", 85, 70, []string{"LD", "CAD"}},
+		{"LD", 85, 70, []string{"LD"}},
 		{"DFC", 62, 75, []string{"DFC"}},
 		{"DFC", 38, 75, []string{"DFC"}},
-		{"LI", 15, 70, []string{"LI", "CAI"}},
+		{"LI", 15, 70, []string{"LI"}},
 	}
 }
 
 // Formaciones que usa el cuerpo técnico (fútbol 11).
 var formations = []Formation{
 	{"4-4-2", append(back4(),
-		Slot{"MD", 85, 46, []string{"MD", "ED"}}, Slot{"MC", 62, 50, []string{"MC", "MCD", "MCO"}},
-		Slot{"MC", 38, 50, []string{"MC", "MCD", "MCO"}}, Slot{"MI", 15, 46, []string{"MI", "EI"}},
+		Slot{"VD", 85, 46, []string{"VD"}}, Slot{"MC", 62, 52, []string{"MC", "ENG"}},
+		Slot{"MC", 38, 52, []string{"MC", "ENG"}}, Slot{"VI", 15, 46, []string{"VI"}},
 		Slot{"DC", 62, 20, []string{"DC"}}, Slot{"DC", 38, 20, []string{"DC"}})},
 	{"4-3-3", append(back4(),
-		Slot{"MC", 72, 50, []string{"MC", "MCO", "MD"}}, Slot{"MCD", 50, 56, []string{"MCD", "MC"}},
-		Slot{"MC", 28, 50, []string{"MC", "MCO", "MI"}}, Slot{"ED", 84, 24, []string{"ED", "MD"}},
-		Slot{"DC", 50, 16, []string{"DC"}}, Slot{"EI", 16, 24, []string{"EI", "MI"}})},
+		Slot{"MC", 72, 50, []string{"MC", "ENG"}}, Slot{"MC", 50, 56, []string{"MC"}},
+		Slot{"MC", 28, 50, []string{"MC", "ENG"}}, Slot{"VD", 84, 24, []string{"VD"}},
+		Slot{"DC", 50, 16, []string{"DC"}}, Slot{"VI", 16, 24, []string{"VI"}})},
 	{"4-2-3-1", append(back4(),
-		Slot{"MCD", 62, 56, []string{"MCD", "MC"}}, Slot{"MCD", 38, 56, []string{"MCD", "MC"}},
-		Slot{"ED", 84, 34, []string{"ED", "MD"}}, Slot{"MCO", 50, 36, []string{"MCO", "MC"}},
-		Slot{"EI", 16, 34, []string{"EI", "MI"}}, Slot{"DC", 50, 14, []string{"DC"}})},
+		Slot{"MC", 62, 57, []string{"MC"}}, Slot{"MC", 38, 57, []string{"MC"}},
+		Slot{"VD", 84, 34, []string{"VD"}}, Slot{"ENG", 50, 36, []string{"ENG", "MC"}},
+		Slot{"VI", 16, 34, []string{"VI"}}, Slot{"DC", 50, 14, []string{"DC"}})},
 	{"3-5-2", []Slot{
 		{"POR", 50, 90, []string{"POR"}},
 		{"DFC", 72, 74, []string{"DFC", "LD"}}, {"DFC", 50, 77, []string{"DFC"}}, {"DFC", 28, 74, []string{"DFC", "LI"}},
-		{"CAD", 88, 46, []string{"CAD", "LD", "MD"}}, {"MC", 65, 52, []string{"MC", "MCO"}},
-		{"MCD", 50, 58, []string{"MCD", "MC"}}, {"MC", 35, 52, []string{"MC", "MCO"}},
-		{"CAI", 12, 46, []string{"CAI", "LI", "MI"}},
+		{"VD", 88, 46, []string{"VD", "LD"}}, {"MC", 64, 56, []string{"MC"}},
+		{"MC", 36, 56, []string{"MC"}}, {"ENG", 50, 38, []string{"ENG", "MC"}},
+		{"VI", 12, 46, []string{"VI", "LI"}},
 		{"DC", 62, 20, []string{"DC"}}, {"DC", 38, 20, []string{"DC"}},
 	}},
 }
