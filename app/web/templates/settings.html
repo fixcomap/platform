@@ -20,14 +20,18 @@
 <p class="sub">Para añadir o quitar entrenadores, pídeselo a un admin.</p>
 {{end}}
 
-<h2>Plantilla de convocatoria</h2>
+{{/* Plegado: la plantilla y su vista previa solo se ven al pulsar el botón. */}}
+<details class="add" id="imagen" {{if .Data.OpenImage}}open{{end}}>
+  <summary class="btn">Configuración de imagen de convocatoria</summary>
+  <div class="card">
+<h3>Plantilla</h3>
 <form method="post" action="/t/{{$t.ID}}/template" enctype="multipart/form-data" class="card">
   <label class="field"><span>Imagen base sin nombres (PNG/JPEG, máx. 5 MB)</span><input type="file" name="image" accept="image/png,image/jpeg,image/webp" required></label>
   <button>{{if .Data.Layout}}Cambiar imagen{{else}}Subir imagen{{end}}</button>
 </form>
 
 {{with .Data.Layout}}
-<h2>Posición de los nombres</h2>
+<h3>Posición de los nombres</h3>
 <p class="sub">Vista previa con 18 nombres de ejemplo. Valores relativos (0–1) a la imagen.</p>
 <canvas id="img"></canvas>
 <form method="post" action="/t/{{$t.ID}}/template/layout" class="card" id="layout-form" style="margin-top:12px">
@@ -80,4 +84,6 @@
   draw();
 </script>
 {{end}}
+  </div>
+</details>
 {{end}}
