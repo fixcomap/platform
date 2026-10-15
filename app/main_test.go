@@ -557,6 +557,17 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("acceso a equipo ajeno: %d", rec.Code)
 	}
 
+	// Entrenador (no admin) con dos equipos: el desplegable muestra solo los
+	// suyos y sin acceso a la lista general ni a crear equipos.
+	r = httptest.NewRequest("GET", base+"/players", nil)
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: signSession([]byte(a.auth.cfg.SessionKey), "coach@test.dev", time.Now().Add(time.Hour))})
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, r)
+	if body := rec.Body.String(); !strings.Contains(body, "team-switch") || !strings.Contains(body, "Cadete") ||
+		strings.Contains(body, ">Otro<") || strings.Contains(body, "Todos los equipos") {
+		t.Fatalf("selector del entrenador: %d", rec.Code)
+	}
+
 	// Entrenador (no admin) de su propio equipo: ni ve ni cambia los ajustes.
 	r = httptest.NewRequest("GET", base+"/settings", nil)
 	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: signSession([]byte(a.auth.cfg.SessionKey), "coach@test.dev", time.Now().Add(time.Hour))})
