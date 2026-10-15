@@ -146,6 +146,26 @@ func TestCanonicalHost(t *testing.T) {
 	}
 }
 
+func TestFetchResponses(t *testing.T) {
+	r := httptest.NewRequest("POST", "/x", nil)
+	r.Header.Set("X-Requested-With", "fetch")
+	rec := httptest.NewRecorder()
+	httpError(rec, r, "dorsal no válido", 400)
+	if rec.Code != 400 || !strings.Contains(rec.Body.String(), `"error":"Dorsal no válido."`) {
+		t.Fatalf("error para fetch: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	redirect(rec, r, "/t/1/callups/2#imagen", 303)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"location":"/t/1/callups/2#imagen"`) {
+		t.Fatalf("redirect para fetch: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	redirect(rec, httptest.NewRequest("POST", "/x", nil), "/y", 303)
+	if rec.Code != 303 {
+		t.Fatalf("sin fetch debe seguir siendo 303: %d", rec.Code)
+	}
+}
+
 func TestRequireRedirects(t *testing.T) {
 	a := &auth{cfg: Config{SessionKey: strings.Repeat("k", 32)}}
 	h := a.require(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("pasó sin sesión") }))
@@ -425,7 +445,7 @@ func TestFlow(t *testing.T) {
 	if l, _ := a.st.lineup(context.Background(), mustID(t, cu)); l[6] != ps[0].ID || len(l) != 1 {
 		t.Fatalf("planteamiento: %v", l)
 	}
-	if body := do("GET", cu, nil, 200).Body.String(); !strings.Contains(body, "Guardar planteamiento") || !strings.Contains(body, "Juegan de MC") {
+	if body := do("GET", cu, nil, 200).Body.String(); !strings.Contains(body, "Guardar planteamiento") || !strings.Contains(body, "Convocados que juegan de MC") {
 		t.Fatal("falta el planteamiento con sugerencias por posición")
 	}
 	// Cambiar de formación vacía los puestos.
