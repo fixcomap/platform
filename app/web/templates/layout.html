@@ -28,6 +28,7 @@
   <a href="/t/{{.ID}}/trainings" {{if eq $.Tab "trainings"}}class="on"{{end}}>Entrenos</a>
   <a href="/t/{{.ID}}/callups" {{if eq $.Tab "callups"}}class="on"{{end}}>Convocatorias</a>
   <a href="/t/{{.ID}}/players" {{if eq $.Tab "players"}}class="on"{{end}}>Jugadores</a>
+  <a href="/t/{{.ID}}/boards" {{if eq $.Tab "boards"}}class="on"{{end}}>Pizarra</a>
   {{if $.User.Admin}}<a href="/t/{{.ID}}/settings" {{if eq $.Tab "settings"}}class="on"{{end}}>Ajustes</a>{{end}}
 </nav>
 {{end}}

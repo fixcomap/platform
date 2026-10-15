@@ -1,0 +1,25 @@
+{{define "content"}}
+{{$t := .Team}}{{$b := .Data}}
+<div class="board-head">
+  <input type="text" id="board-name" maxlength="24" value="{{$b.Name}}" aria-label="Nombre de la pizarra">
+  <button id="board-save">Guardar</button>
+</div>
+<div class="board-tools" role="toolbar" aria-label="Herramientas de la pizarra">
+  <button type="button" class="ghost small on" data-mode="move">✋ Mover</button>
+  <button type="button" class="ghost small" data-mode="arrow">↗ Flecha</button>
+  <button type="button" class="ghost small" data-mode="name">✎ Nombre</button>
+  <button type="button" class="ghost small" data-mode="remove">✕ Quitar</button>
+  <button type="button" class="ghost small" id="board-add">+ Ficha</button>
+  <button type="button" class="ghost small" id="board-undo">↶ Deshacer flecha</button>
+</div>
+<p class="sub" id="board-hint">Arrastra las fichas y el balón.</p>
+<svg id="board" class="board" viewBox="-3 -3 74 111" role="img" aria-label="Pizarra táctica"></svg>
+<p class="sub" id="board-status" aria-live="polite"></p>
+<script src="/static/board.js"></script>
+<script>initBoard(document.getElementById('board'), {{$b.State}});</script>
+
+<form method="post" action="/t/{{$t.ID}}/boards/{{$b.ID}}/delete" onsubmit="return confirm('¿Borrar esta pizarra?')" style="margin-top:24px">
+  <button class="danger small">Borrar pizarra</button>
+</form>
+<p><a href="/t/{{$t.ID}}/boards">← Pizarras</a></p>
+{{end}}

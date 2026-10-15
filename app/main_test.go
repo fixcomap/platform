@@ -434,6 +434,44 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("al cambiar de formación deben vaciarse los puestos: %v", l)
 	}
 
+	// Pizarra: desde formación y desde el planteamiento de un partido; guardar
+	// por JSON acota coordenadas y textos.
+	do("GET", base+"/boards", nil, 200)
+	do("POST", base+"/boards", url.Values{"name": {""}, "origin": {"f:4-4-2"}}, 400)
+	bd := do("POST", base+"/boards", url.Values{"name": {"Salida"}, "origin": {"f:4-4-2"}}, 303).Header().Get("Location")
+	if body := do("GET", bd, nil, 200).Body.String(); !strings.Contains(body, "initBoard") {
+		t.Fatal("la pizarra no carga el editor")
+	}
+	b0, _ := a.st.board(context.Background(), mustID(t, base), mustID(t, bd))
+	if len(b0.State.Tokens) != 11 || b0.State.Tokens[0].Label != "POR" {
+		t.Fatalf("pizarra desde 4-4-2: %+v", b0.State.Tokens)
+	}
+	do("POST", cu+"/lineup", url.Values{"formation": {"4-3-3"}}, 303)
+	do("POST", cu+"/lineup", url.Values{"formation": {"4-3-3"}, "slot_0": {itoa(ps[0].ID)}}, 303)
+	bc := do("POST", base+"/boards", url.Values{"name": {"Del partido"}, "origin": {"c:" + itoa(mustID(t, cu))}}, 303).Header().Get("Location")
+	if b1, _ := a.st.board(context.Background(), mustID(t, base), mustID(t, bc)); b1.State.Tokens[0].Name != "Cristo" {
+		t.Fatalf("pizarra desde planteamiento: %+v", b1.State.Tokens[0])
+	}
+	save := func(body string, want int) {
+		t.Helper()
+		r := httptest.NewRequest("POST", bd, strings.NewReader(body))
+		r.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, r)
+		if rec.Code != want {
+			t.Fatalf("guardar pizarra = %d, want %d: %s", rec.Code, want, rec.Body.String())
+		}
+	}
+	save(`{"name":"Córner","state":{"tokens":[{"label":"9","name":"Nombre larguísimo de más de veinticuatro","x":500,"y":-3}],
+		"ball":{"x":10,"y":10},"arrows":[{"from":{"x":1,"y":1},"to":{"x":30,"y":40}}]}}`, 204)
+	b2, _ := a.st.board(context.Background(), mustID(t, base), mustID(t, bd))
+	if b2.Name != "Córner" || b2.State.Tokens[0].X != pitchW || b2.State.Tokens[0].Y != 0 || len([]rune(b2.State.Tokens[0].Name)) != maxLabel || len(b2.State.Arrows) != 1 {
+		t.Fatalf("pizarra guardada: %+v", b2)
+	}
+	save(`{"name":"","state":{}}`, 400)
+	save(`no es json`, 400)
+	do("POST", bd+"/delete", nil, 303)
+
 	// Otro equipo sin acceso: sin admin no se ve (404).
 	a.auth.devUser = ""
 	a.auth.cfg = Config{SessionKey: strings.Repeat("k", 32)}
