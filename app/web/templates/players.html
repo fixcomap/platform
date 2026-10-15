@@ -1,5 +1,6 @@
 {{define "content"}}
 {{$t := .Team}}
+<p class="actions"><a class="btn ghost-btn" href="/t/{{$t.ID}}/players/report">Informe PDF</a></p>
 {{with .Data.Scorers}}
 <details class="card" open>
   <summary>Goleadores de la temporada</summary>

@@ -25,6 +25,11 @@ var templatesFS embed.FS
 //go:embed web/static
 var staticFS embed.FS
 
+// Páginas sin el layout de la app (sin menú), pensadas para imprimir.
+//
+//go:embed web/print/*.html
+var printFS embed.FS
+
 // Hora de España: "hoy" para el entreno por defecto no puede ser el de UTC.
 var madrid = func() *time.Location {
 	l, err := time.LoadLocation("Europe/Madrid")
@@ -163,6 +168,18 @@ func parsePages() (map[string]*template.Template, error) {
 		}
 		pages[base] = t
 	}
+	prints, err := fs.Glob(printFS, "web/print/*.html")
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range prints {
+		base := strings.TrimSuffix(strings.TrimPrefix(n, "web/print/"), ".html")
+		t, err := template.New(base+".html").Funcs(funcs).ParseFS(printFS, n)
+		if err != nil {
+			return nil, err
+		}
+		pages[base] = t
+	}
 	return pages, nil
 }
 
@@ -281,6 +298,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	t("GET /t/{team}", a.teamHome)
 	t("GET /t/{team}/players", a.playersPage)
 	t("POST /t/{team}/players", a.savePlayer)
+	t("GET /t/{team}/players/report", a.playersReport)
 	t("GET /t/{team}/players/{player}", a.playerPage)
 	t("POST /t/{team}/players/{player}", a.savePlayer)
 	t("GET /t/{team}/players/{player}/edit", a.playerEditPage)
@@ -370,25 +388,23 @@ func (a *app) teamHome(w http.ResponseWriter, r *http.Request, t Team) {
 	redirect(w, r, teamURL(t, "/trainings"), http.StatusSeeOther)
 }
 
-func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
+// playersData: la plantilla con ciclo, disciplina y goles; la usan la
+// pantalla de Jugadores y el informe imprimible.
+func (a *app) playersData(r *http.Request, t Team) (map[string]any, error) {
 	ps, err := a.st.players(r.Context(), t.ID, false)
 	if err != nil {
-		a.fail(w, r, err)
-		return
+		return nil, err
 	}
 	now := time.Now().In(madrid)
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	since, fromMatch, ts, marks, err := a.st.cycle(r.Context(), t.ID, today, true)
+	since, fromMatch, ts, marks, err := a.st.cycle(r.Context(), t.ID, today(), true)
 	if err != nil {
-		a.fail(w, r, err)
-		return
+		return nil, err
 	}
 	withCycle(ps, ts, marks)
-	// En Jugadores: sanción para el próximo partido y amarillas de la temporada.
+	// Sanción para el próximo partido y tarjetas de la temporada.
 	disc, err := a.st.discipline(r.Context(), t.ID, now)
 	if err != nil {
-		a.fail(w, r, err)
-		return
+		return nil, err
 	}
 	for i := range ps {
 		ps[i].Suspension = disc.Next[ps[i].ID]
@@ -399,8 +415,7 @@ func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	scorers, err := a.st.scorers(r.Context(), t.ID, now)
 	if err != nil {
-		a.fail(w, r, err)
-		return
+		return nil, err
 	}
 	goals := map[int64]int{}
 	for _, sc := range scorers {
@@ -409,10 +424,30 @@ func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
 	for i := range ps {
 		ps[i].Goals = goals[ps[i].ID]
 	}
-	a.render(w, r, "players", view{Team: &t, Tab: "players", Title: "Jugadores", Data: map[string]any{
+	return map[string]any{
 		"Players": ps, "Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)}, "Scorers": scorers,
-		"Booked": booked(ps), "Sent": sentOff(ps),
-	}})
+		"Booked": booked(ps), "Sent": sentOff(ps), "Trainings": ts, "Now": now,
+	}, nil
+}
+
+func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
+	data, err := a.playersData(r, t)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	a.render(w, r, "players", view{Team: &t, Tab: "players", Title: "Jugadores", Data: data})
+}
+
+// playersReport: el mismo resumen en una página para imprimir o guardar como
+// PDF (A4 apaisado) y mandarlo al grupo. Sin datos privados.
+func (a *app) playersReport(w http.ResponseWriter, r *http.Request, t Team) {
+	data, err := a.playersData(r, t)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	a.render(w, r, "report", view{Team: &t, Tab: "players", Title: "Informe de jugadores", Data: data})
 }
 
 func (a *app) playerPage(w http.ResponseWriter, r *http.Request, t Team) {

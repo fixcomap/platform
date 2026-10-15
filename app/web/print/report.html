@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Team.Name}} · Informe {{date .Data.Now}}</title>
+<link rel="icon" href="/static/icon.svg">
+<style>
+  /* Página autónoma para imprimir: sin el CSS ni el menú de la app. */
+  @page { size: A4 landscape; margin: 10mm; }
+  @font-face { font-family: "Open Sans"; font-weight: 700; src: url(/static/open-sans-700-latin.woff2) format("woff2"); }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font: 12px/1.35 system-ui, -apple-system, sans-serif; color: #1d1a2e; background: #fff; }
+  .bar { display: flex; gap: 8px; margin-bottom: 14px; }
+  .bar button, .bar a { padding: 10px 14px; border-radius: 8px; border: 0; background: #3b2f8f; color: #fff; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
+  .bar a { background: transparent; color: #3b2f8f; border: 1px solid #ddd; }
+  header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #3b2f8f; padding-bottom: 6px; margin-bottom: 10px; }
+  h1 { font: 700 18px "Open Sans", sans-serif; margin: 0; color: #3b2f8f; }
+  h2 { font-size: 13px; margin: 14px 0 6px; color: #3b2f8f; }
+  .sub { color: #6b6880; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 4px 6px; border-bottom: 1px solid #e3e0ef; text-align: center; white-space: nowrap; }
+  th { font-size: 11px; color: #6b6880; font-weight: 600; }
+  td.name, th.name { text-align: left; white-space: normal; }
+  tr:nth-child(even) td { background: #f7f6fc; }
+  .presente { color: #1f8a4c; font-weight: 800; } .tarde { color: #3b2f8f; font-weight: 800; }
+  .lesionado { color: #9a5b00; font-weight: 800; } .justificado { color: #2557a7; font-weight: 800; }
+  .injustificado { color: #b3261e; font-weight: 800; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 4px; margin: 1px 2px; }
+  .tag.bad { background: #fbe6e4; color: #b3261e; } .tag.warn { background: #fdf0d9; color: #9a5b00; }
+  .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .cols ol, .cols ul { margin: 0; padding-left: 18px; }
+  .legend { margin-top: 10px; color: #6b6880; font-size: 11px; }
+  tr, li { break-inside: avoid; }
+  @media print { .bar { display: none; } body { padding: 0; } }
+</style>
+</head>
+<body>
+{{$d := .Data}}
+<div class="bar">
+  <button type="button" onclick="window.print()">Guardar como PDF / imprimir</button>
+  <a href="/t/{{.Team.ID}}/players">← Volver</a>
+</div>
+<header>
+  <h1>{{.Team.Name}} · Informe de jugadores</h1>
+  <span class="sub">{{weekday $d.Now}} {{date $d.Now}}</span>
+</header>
+<p class="sub">{{with $d.Cycle}}{{if .FromMatch}}Entrenos desde el partido del {{date .Since}}{{else}}Entrenos de los últimos 14 días{{end}}{{end}} · Asistencia, goles y tarjetas: temporada desde el 1 de agosto (tarjetas y goles solo en partidos oficiales).</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Nº</th><th class="name">Jugador</th>
+      {{range $d.Trainings}}<th>{{weekday .Day}} {{.Day.Day}}</th>{{end}}
+      <th>Asistencia</th><th>Goles</th><th>Amarillas<br>(ciclo)</th><th>Rojas</th><th class="name">Avisos</th>
+    </tr>
+  </thead>
+  <tbody>
+  {{range $d.Players}}{{if .Active}}
+    <tr>
+      <td>{{if .Number.Valid}}{{.Number.Int64}}{{end}}</td>
+      <td class="name">{{.DisplayName}}{{if .Nickname}} <span class="sub">({{.FirstName}} {{.LastName}})</span>{{end}}</td>
+      {{range .Cycle}}<td>{{if .Status}}<span class="{{.Status}}">{{symbol .Status}}</span>{{else}}·{{end}}</td>{{end}}
+      <td>{{if .Trainings}}{{.Percent}}% <span class="sub">{{.Attended}}/{{.Trainings}}</span>{{else}}—{{end}}</td>
+      <td>{{if .Goals}}{{.Goals}}{{end}}</td>
+      <td>{{if .CycleYellows}}{{.CycleYellows}}{{end}}</td>
+      <td>{{if .Reds}}{{.Reds}}{{end}}{{if .Doubles}}{{if .Reds}} + {{end}}{{.Doubles}}×2A{{end}}</td>
+      <td class="name">
+        {{if .Suspension}}<span class="tag bad">Sancionado · {{.Suspension}}{{if gt .PendingGames 1}} · {{.PendingGames}} partidos{{end}}</span>{{else if eq (mod .CycleYellows 5) 4}}<span class="tag warn">Apercibido</span>{{end}}
+        {{if ge .Streak 2}}<span class="tag warn">{{.Streak}} faltas seguidas</span>{{end}}
+        {{if ge .Late lateAlert}}<span class="tag warn">{{.Late}} tardes en {{lateWindow}}</span>{{end}}
+      </td>
+    </tr>
+  {{end}}{{end}}
+  </tbody>
+</table>
+<p class="legend">✓ vino · T llegó tarde · L lesionado · J ausencia justificada · ✗ ausencia no justificada · · sin lista · 2A = doble amarilla</p>
+
+<div class="cols">
+  <section>
+    <h2>Goleadores</h2>
+    {{with $d.Scorers}}<ol>{{range .}}<li>{{.Player.DisplayName}} — {{.Goals}}</li>{{end}}</ol>{{else}}<p class="sub">Sin goles todavía.</p>{{end}}
+  </section>
+  <section>
+    <h2>Amonestados</h2>
+    {{with $d.Booked}}<ul>{{range .}}<li>{{.DisplayName}} — {{.CycleYellows}} amarilla{{if gt .CycleYellows 1}}s{{end}}{{if .Suspension}} (sancionado){{else if eq (mod .CycleYellows 5) 4}} (apercibido){{end}}</li>{{end}}</ul>{{else}}<p class="sub">Sin amonestados.</p>{{end}}
+  </section>
+  <section>
+    <h2>Expulsiones y sanciones</h2>
+    {{with $d.Sent}}<ul>{{range .}}<li>{{.DisplayName}}{{if .Reds}} — {{.Reds}} roja{{if gt .Reds 1}}s{{end}}{{end}}{{if .Doubles}} — {{.Doubles}} doble{{if gt .Doubles 1}}s{{end}} amarilla{{if gt .Doubles 1}}s{{end}}{{end}}{{if .PendingGames}} · le quedan {{.PendingGames}} partido{{if gt .PendingGames 1}}s{{end}}{{end}}</li>{{end}}</ul>{{else}}<p class="sub">Sin expulsiones.</p>{{end}}
+  </section>
+</div>
+</body>
+</html>
