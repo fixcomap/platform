@@ -447,6 +447,10 @@ func TestFlow(t *testing.T) {
 		t.Fatal("perfil incompleto")
 	}
 
+	// El admin, aun con un solo equipo, tiene acceso a la lista para crear otros.
+	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "Todos los equipos") {
+		t.Fatal("el admin no puede volver a la lista de equipos desde dentro")
+	}
 	// Selector de equipo: el admin ve los dos equipos en la cabecera.
 	if _, err := a.st.createTeam(context.Background(), "Cadete", "coach@test.dev"); err != nil {
 		t.Fatal(err)
