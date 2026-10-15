@@ -277,7 +277,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	t("POST /t/{team}/players", a.savePlayer)
 	t("GET /t/{team}/players/{player}", a.playerPage)
 	t("POST /t/{team}/players/{player}", a.savePlayer)
-	t("POST /t/{team}/players/{player}/skills", adminOnly(a.saveSkills))
+	t("GET /t/{team}/players/{player}/edit", a.playerEditPage)
 	t("GET /t/{team}/trainings", a.trainingsPage)
 	t("POST /t/{team}/trainings", a.createTraining)
 	t("GET /t/{team}/trainings/{training}", a.trainingPage)
@@ -444,28 +444,44 @@ func (a *app) playerPage(w http.ResponseWriter, r *http.Request, t Team) {
 	a.render(w, r, "player", view{Team: &t, Tab: "players", Title: pr.Player.DisplayName(), Data: pr})
 }
 
-func (a *app) saveSkills(w http.ResponseWriter, r *http.Request, t Team) {
+// playerEditPage: todos los valores del jugador en un solo formulario (datos,
+// posiciones y, para admin, cualidades).
+func (a *app) playerEditPage(w http.ResponseWriter, r *http.Request, t Team) {
 	id, err := pathID(r, "player")
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
+	p, err := a.st.player(r.Context(), t.ID, id)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	var sk Skills
+	if currentUser(r.Context()).Admin {
+		if sk, err = a.st.skills(r.Context(), id); err != nil {
+			a.fail(w, r, err)
+			return
+		}
+	}
+	a.render(w, r, "player_edit", view{Team: &t, Tab: "players", Title: "Editar " + p.DisplayName(),
+		Data: map[string]any{"Player": p, "Skills": sk}})
+}
+
+// skillsForm lee las cualidades del formulario de edición; se validan antes
+// de guardar nada para no dejar el jugador a medio actualizar.
+func skillsForm(r *http.Request) (Skills, error) {
 	sk := Skills{}
 	for _, k := range skills {
 		v, ok, err := parseScore(r.FormValue(k.Key))
 		if err != nil {
-			http.Error(w, k.Name+": "+err.Error(), http.StatusBadRequest)
-			return
+			return nil, errors.New(k.Name + ": " + err.Error())
 		}
 		if ok {
 			sk[k.Key] = v
 		}
 	}
-	if err := a.st.saveSkills(r.Context(), t.ID, id, sk); err != nil {
-		a.fail(w, r, err)
-		return
-	}
-	http.Redirect(w, r, teamURL(t, "/players/"+strconv.FormatInt(id, 10)+"#cualidades"), http.StatusSeeOther)
+	return sk, nil
 }
 
 func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
@@ -529,8 +545,28 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 			return
 		}
 	}
+	// Cualidades (solo admin, solo al editar): se validan antes de guardar.
+	var sk Skills
+	withSkills := p.ID != 0 && r.PostFormValue("with_skills") != "" && currentUser(r.Context()).Admin
+	if withSkills {
+		var err error
+		if sk, err = skillsForm(r); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	if err := a.st.savePlayer(r.Context(), t.ID, p); err != nil {
 		a.fail(w, r, err)
+		return
+	}
+	if withSkills {
+		if err := a.st.saveSkills(r.Context(), t.ID, p.ID, sk); err != nil {
+			a.fail(w, r, err)
+			return
+		}
+	}
+	if p.ID != 0 {
+		http.Redirect(w, r, teamURL(t, "/players/"+strconv.FormatInt(p.ID, 10)), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, teamURL(t, "/players"), http.StatusSeeOther)

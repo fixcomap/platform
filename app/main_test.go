@@ -382,7 +382,7 @@ func TestFlow(t *testing.T) {
 		t.Fatalf("perfil: %v %+v", err, pr)
 	}
 	if body := do("GET", base+"/players/"+itoa(ps[0].ID), nil, 200).Body.String(); !strings.Contains(body, "asistencia") ||
-		!strings.Contains(body, "Editar datos del jugador") {
+		!strings.Contains(body, "Editar valores") {
 		t.Fatal("perfil incompleto")
 	}
 
@@ -400,8 +400,16 @@ func TestFlow(t *testing.T) {
 	if p, _ := a.st.player(context.Background(), mustID(t, base), ps[0].ID); p.Positions != "MC,DFC" {
 		t.Fatalf("posiciones: %q", p.Positions)
 	}
-	do("POST", base+"/players/"+itoa(ps[0].ID)+"/skills", url.Values{"pace": {"7,5"}, "passing": {"11"}}, 400)
-	do("POST", base+"/players/"+itoa(ps[0].ID)+"/skills", url.Values{"pace": {"7,5"}, "passing": {"9"}, "defending": {"6"}}, 303)
+	// Un solo formulario «Editar valores»: datos, posiciones y cualidades.
+	do("GET", base+"/players/"+itoa(ps[0].ID)+"/edit", nil, 200)
+	edit := url.Values{"first_name": {"Cristóbal"}, "nickname": {"Cristo"}, "number": {"1"}, "active": {"1"},
+		"main_pos": {"MC"}, "pos": {"DFC", "MC"}, "with_skills": {"1"}, "pace": {"7,5"}, "passing": {"11"}}
+	do("POST", base+"/players/"+itoa(ps[0].ID), edit, 400) // nota fuera de rango: no se guarda nada
+	edit.Set("passing", "9")
+	edit.Set("defending", "6")
+	if loc := do("POST", base+"/players/"+itoa(ps[0].ID), edit, 303).Header().Get("Location"); !strings.HasSuffix(loc, "/players/"+itoa(ps[0].ID)) {
+		t.Fatalf("tras editar debe volver al perfil: %q", loc)
+	}
 	if sk, _ := a.st.skills(context.Background(), ps[0].ID); sk["pace"] != 7.5 || sk.Overall() != 7.5 || len(sk) != 3 {
 		t.Fatalf("cualidades: %v overall=%v", sk, sk.Overall())
 	}
