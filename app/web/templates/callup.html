@@ -25,35 +25,27 @@
 {{if and (gt (len .Data.In) 18) (not $c.Friendly)}}<p class="warn">Recuerda que la federación solo permite 18 jugadores por partido.</p>{{end}}
 {{template "cycleHead" .Data.Cycle}}
 {{if .Data.In}}
+{{/* Una sola lista: cada convocado con su C (capitán, uno) y P (porteros) y
+     el botón Quitar, que envía el mismo formulario a /remove (formaction). */}}
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/roles" id="convocados">
 <ul class="list">
   {{range .Data.In}}
   <li>
     <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
     <span class="grow">{{.DisplayName}} {{template "discipline" .}}
-      {{if and $c.Captain.Valid (eq $c.Captain.Int64 .ID)}}<span class="badge">C</span>{{end}}{{if .Goalkeeper}}<span class="badge">P</span>{{end}}
       {{if .Goals}}<span class="goals" title="{{.Goals}} gol(es)">⚽{{if gt .Goals 1}}×{{.Goals}}{{end}}</span>{{end}}
       {{if .Yellow}}<span class="card-y" title="{{.Yellow}} amarilla(s)">{{.Yellow}}</span>{{end}}{{if .Red}}<span class="card-r" title="roja"></span>{{end}}
       {{template "cycle" .Cycle}}</span>
-    <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/remove"><input type="hidden" name="player" value="{{.ID}}"><button class="danger small">Quitar</button></form>
+    <span class="roles-inline">
+      <label class="role" title="Capitán"><input type="radio" name="captain" value="{{.ID}}" aria-label="{{.DisplayName}} capitán" {{if and $c.Captain.Valid (eq $c.Captain.Int64 .ID)}}checked{{end}}><span>C</span></label>
+      <label class="role" title="Portero"><input type="checkbox" name="goalkeeper" value="{{.ID}}" aria-label="{{.DisplayName}} portero" {{if .Goalkeeper}}checked{{end}}><span>P</span></label>
+    </span>
+    <button class="danger small" formaction="/t/{{$t.ID}}/callups/{{$c.ID}}/remove" name="player" value="{{.ID}}" aria-label="Quitar a {{.DisplayName}}">Quitar</button>
   </li>
   {{end}}
 </ul>
-
-<h2 id="imagen">Capitán y porteros</h2>
-<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/roles" class="card">
-  <table class="roles">
-    <thead><tr><th></th><th>Capitán</th><th>Portero</th></tr></thead>
-    <tbody>
-    {{range .Data.In}}
-      <tr>
-        <td>{{.DisplayName}}</td>
-        <td><input type="radio" name="captain" value="{{.ID}}" aria-label="{{.DisplayName}} capitán" {{if and $c.Captain.Valid (eq $c.Captain.Int64 .ID)}}checked{{end}}></td>
-        <td><input type="checkbox" name="goalkeeper" value="{{.ID}}" aria-label="{{.DisplayName}} portero" {{if .Goalkeeper}}checked{{end}}></td>
-      </tr>
-    {{end}}
-    </tbody>
-  </table>
-  <button>Guardar capitán y porteros</button>
+<p class="sub">C = capitán (uno) · P = portero (uno o más). Hacen falta los dos para generar la imagen.</p>
+<button>Guardar capitán y porteros</button>
 </form>
 
 <h2 id="planteamiento">Planteamiento</h2>
@@ -91,7 +83,7 @@
   {{end}}
 </form>
 
-<h2>Imagen</h2>
+<h2 id="imagen">Imagen</h2>
 {{if not .Data.Layout}}
 <p class="sub">Falta la plantilla de la imagen{{if .User.Admin}}: súbela en <a href="/t/{{$t.ID}}/settings">Ajustes</a>{{else}}; pídesela a un admin{{end}}.</p>
 {{else if not .Data.RolesReady}}

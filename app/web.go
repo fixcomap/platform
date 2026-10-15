@@ -1029,7 +1029,7 @@ func (a *app) callupAction(w http.ResponseWriter, r *http.Request, t Team,
 }
 
 // callupAdd añade de una vez los jugadores marcados en Disponibles y lleva a
-// capitán y porteros: el siguiente paso antes de la imagen.
+// la lista de convocados, donde se marcan capitán y porteros.
 func (a *app) callupAdd(w http.ResponseWriter, r *http.Request, t Team) {
 	cid, ok := a.callupID(w, r)
 	if !ok {
@@ -1056,7 +1056,7 @@ func (a *app) callupAdd(w http.ResponseWriter, r *http.Request, t Team) {
 		a.fail(w, r, err)
 		return
 	}
-	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#imagen"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#convocados"), http.StatusSeeOther)
 }
 
 func (a *app) callupRemove(w http.ResponseWriter, r *http.Request, t Team) {
