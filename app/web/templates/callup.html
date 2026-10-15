@@ -111,17 +111,36 @@
 <p class="empty">Añade jugadores desde la lista de abajo.</p>
 {{end}}
 
-<h2>Disponibles</h2>
+<h2 id="disponibles">Disponibles</h2>
 {{if .Data.Available}}
-<ul class="list">
-  {{range .Data.Available}}
-  <li>
-    <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
-    <span class="grow">{{.DisplayName}} {{template "discipline" .}}{{if .Trainings}} <span class="sub">{{.Percent}}% asist.</span>{{end}}{{template "cycle" .Cycle}}</span>
-    <form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/add"><input type="hidden" name="player" value="{{.ID}}"><button class="small">Añadir</button></form>
-  </li>
-  {{end}}
-</ul>
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/add" id="pick">
+  <p class="sub">Marca a los que quieras convocar y pulsa el botón de abajo.</p>
+  <ul class="list">
+    {{range .Data.Available}}
+    <li class="pick">
+      <label>
+        <input type="checkbox" name="player" value="{{.ID}}" aria-label="convocar a {{.DisplayName}}">
+        <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
+        <span class="grow">{{.DisplayName}} {{template "discipline" .}}{{if .Trainings}} <span class="sub">{{.Percent}}% asist.</span>{{end}}{{template "cycle" .Cycle}}</span>
+      </label>
+    </li>
+    {{end}}
+  </ul>
+  <div class="sticky-save"><button id="pick-btn" disabled>Selecciona jugadores</button></div>
+</form>
+<script>
+  // Contador del botón: cuántos se van a añadir (y el total resultante).
+  const picks = document.querySelectorAll('#pick input[name=player]');
+  const already = {{len .Data.In}};
+  const btn = document.getElementById('pick-btn');
+  const upd = () => {
+    const n = [...picks].filter(p => p.checked).length;
+    btn.disabled = n === 0;
+    btn.textContent = n === 0 ? 'Selecciona jugadores'
+      : `Añadir ${n} seleccionado${n > 1 ? 's' : ''} (total ${already + n})`;
+  };
+  picks.forEach(p => p.addEventListener('change', upd)); upd();
+</script>
 {{else}}
 <p class="empty">Todos convocados.</p>
 {{end}}
