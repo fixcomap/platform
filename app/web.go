@@ -1064,6 +1064,25 @@ func (a *app) callupAdd(w http.ResponseWriter, r *http.Request, t Team) {
 		redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#disponibles"), http.StatusSeeOther)
 		return
 	}
+	// Un sancionado no puede jugar este partido (en amistosos no hay sanción:
+	// Suspended no tiene entrada para ellos).
+	disc, err := a.st.discipline(r.Context(), t.ID, today())
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	for _, pid := range ids {
+		if reason := disc.Suspended[cid][pid]; reason != "" {
+			p, err := a.st.player(r.Context(), t.ID, pid)
+			if err != nil {
+				a.fail(w, r, err)
+				return
+			}
+			httpError(w, r, fmt.Sprintf("%s está sancionado (%s) y no puede jugar este partido.", p.DisplayName(), reason),
+				http.StatusConflict)
+			return
+		}
+	}
 	if err := a.st.addToCallup(r.Context(), t.ID, cid, ids); err != nil {
 		a.fail(w, r, err)
 		return

@@ -369,6 +369,10 @@ func TestFlow(t *testing.T) {
 	if body := do("GET", next, nil, 200).Body.String(); !strings.Contains(body, "Sancionado · doble amarilla") {
 		t.Fatal("no aparece la sanción por doble amarilla en el siguiente partido")
 	}
+	// Y no se le puede convocar para ese partido.
+	if rec := do("POST", next+"/add", url.Values{"player": {itoa(ps[0].ID)}}, 409); !strings.Contains(rec.Body.String(), "sancionado") {
+		t.Fatalf("convocar a un sancionado: %s", rec.Body.String())
+	}
 	// Una amarilla simple suma al ciclo → aparece en amonestados.
 	do("POST", next+"/add", url.Values{"player": {itoa(ps[1].ID)}}, 303)
 	do("POST", next+"/roster", url.Values{"with_stats": {"1"}, "y_" + itoa(ps[1].ID): {"1"}}, 303)

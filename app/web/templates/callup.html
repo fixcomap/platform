@@ -118,9 +118,9 @@
   <p class="sub">Marca a los que quieras convocar y pulsa el botón de abajo.</p>
   <ul class="list">
     {{range .Data.Available}}
-    <li class="pick">
+    <li class="pick{{if .Suspension}} blocked{{end}}">
       <label>
-        <input type="checkbox" name="player" value="{{.ID}}" aria-label="convocar a {{.DisplayName}}">
+        <input type="checkbox" name="player" value="{{.ID}}" aria-label="convocar a {{.DisplayName}}" {{if .Suspension}}disabled title="Sancionado para este partido"{{end}}>
         <span class="num">{{if .Number.Valid}}{{.Number.Int64}}{{end}}</span>
         <span class="grow">{{.DisplayName}} {{template "discipline" .}}{{if .Trainings}} <span class="sub">{{.Percent}}% asist.</span>{{end}}{{template "cycle" .Cycle}}</span>
       </label>
