@@ -9,16 +9,15 @@ import (
 	"strings"
 )
 
-// Position: códigos habituales en español (como en el FIFA).
+// Position: las posiciones que usa el cuerpo técnico.
 type Position struct {
 	Code, Name string
 }
 
 var positions = []Position{
-	{"POR", "Portero"}, {"LD", "Lateral derecho"}, {"DFC", "Central"}, {"LI", "Lateral izquierdo"},
-	{"CAD", "Carrilero derecho"}, {"CAI", "Carrilero izquierdo"}, {"MCD", "Pivote"}, {"MC", "Mediocentro"},
-	{"MCO", "Mediapunta"}, {"MD", "Interior derecho"}, {"MI", "Interior izquierdo"},
-	{"ED", "Extremo derecho"}, {"EI", "Extremo izquierdo"}, {"DC", "Delantero centro"},
+	{"POR", "Portero"}, {"DFC", "Defensa central"}, {"LI", "Lateral izquierdo"}, {"LD", "Lateral derecho"},
+	{"MC", "Mediocampista"}, {"ENG", "Enganche"}, {"VI", "Volante izquierdo"}, {"VD", "Volante derecho"},
+	{"DC", "Delantero"},
 }
 
 func validPosition(code string) bool {
