@@ -173,14 +173,19 @@ fieldset.positions { border: 1px solid var(--line); border-radius: 8px; padding:
 fieldset.positions legend { font-size: 14px; color: var(--muted); padding: 0 4px; }
 /* Cualidades: carta y hexágono */
 .skills-view { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: center; margin: 12px 0; }
-.fut { width: 160px; padding: 14px 12px; border-radius: 14px 14px 40px 40px; color: #2b2410;
-  background: linear-gradient(160deg, #f7e7a6, #d9b85c 60%, #b8913a); box-shadow: 0 4px 14px rgba(0,0,0,.25); }
-.fut-top { display: flex; flex-direction: column; line-height: 1; }
-.fut-top b { font-size: 34px; }
-.fut-top span { font-size: 14px; font-weight: 700; }
-.fut-name { text-align: center; font-weight: 800; font-size: 16px; margin: 10px 0 8px; border-bottom: 1px solid rgba(0,0,0,.2); padding-bottom: 6px; }
-.fut-stats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 13px; }
-.fut-stats b { display: inline-block; min-width: 26px; text-align: right; }
+.skills h3 { margin: 0 0 4px; font-size: 16px; }
+/* Tarjeta de valoración: cuadrada y en los violetas de la app. */
+.rating { width: 170px; padding: 14px; border-radius: 12px; color: #fff;
+  background: linear-gradient(150deg, #5b4bc4, #3b2f8f 55%, #261d63); box-shadow: 0 4px 14px rgba(38,29,99,.35); }
+.rating-top { display: flex; align-items: baseline; justify-content: space-between; }
+.rating-top b { font-size: 38px; line-height: 1; }
+.rating-top span { font-size: 15px; font-weight: 800; padding: 2px 8px; border-radius: 6px; background: rgba(255,255,255,.18); }
+.rating-name { font-weight: 800; font-size: 16px; margin: 10px 0 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,.25); }
+.rating-stats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 13px; }
+.rating-stats li { display: flex; justify-content: space-between; }
+.rating-stats span { opacity: .8; font-weight: 600; }
+.skills details { margin-top: 8px; }
+.skills details > summary { cursor: pointer; font-weight: 600; color: var(--accent); }
 svg.hex { width: 220px; max-width: 100%; }
 svg.hex .guide { fill: none; stroke: var(--line); stroke-width: 1; }
 svg.hex .value { fill: rgba(59,47,143,.35); stroke: var(--accent); stroke-width: 2; }

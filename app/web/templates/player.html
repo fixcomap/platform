@@ -18,6 +18,42 @@
   <div class="tile"><b><span class="card-y"></span> {{$pr.YellowTotal}}{{if $pr.Reds}} <span class="card-r"></span> {{$pr.Reds}}{{end}}</b><span>tarjetas<br><small>{{$p.CycleYellows}} en el ciclo de 5{{if $p.PendingGames}} · {{$p.PendingGames}} partido{{if gt $p.PendingGames 1}}s{{end}} de sanción pendiente{{if gt $p.PendingGames 1}}s{{end}}{{end}}</small></span></div>
 </div>
 
+{{if .User.Admin}}
+{{$sk := $pr.Skills}}
+{{/* Visible de entrada; solo el formulario de notas va plegado. */}}
+<section class="card skills" id="cualidades">
+  <h3>Cualidades</h3>
+  {{if $sk}}
+  <div class="skills-view">
+    <div class="rating">
+      <div class="rating-top"><b>{{score $sk.Overall}}</b><span>{{with $p.PositionList}}{{index . 0}}{{else}}—{{end}}</span></div>
+      <div class="rating-name">{{$p.DisplayName}}</div>
+      <ul class="rating-stats">{{range skillDefs}}<li><span>{{.Short}}</span><b>{{scoreOf $sk .Key}}</b></li>{{end}}</ul>
+    </div>
+    <svg class="hex" viewBox="-20 -10 240 220" role="img" aria-label="Hexágono de cualidades">
+      {{range $l := hexLevels}}<polygon class="guide" points="{{hexGuide $l}}"/>{{end}}
+      <polygon class="value" points="{{$sk.Hex}}"/>
+      {{range $i, $d := skillDefs}}{{$xy := hexLabel $i}}<text x="{{index $xy 0}}" y="{{index $xy 1}}">{{$d.Short}} {{scoreOf $sk $d.Key}}</text>{{end}}
+    </svg>
+  </div>
+  {{else}}
+  <p class="sub">Aún sin valorar.</p>
+  {{end}}
+  <details {{if not $sk}}open{{end}}>
+    <summary>Editar cualidades</summary>
+    <form method="post" action="/t/{{.Team.ID}}/players/{{$p.ID}}/skills" class="skills-form">
+      {{range skillDefs}}
+      <label class="field"><span>{{.Name}}</span>
+        <input type="number" name="{{.Key}}" min="1" max="10" step="0.5" inputmode="decimal" value="{{scoreOf $sk .Key}}" placeholder="1–10">
+      </label>
+      {{end}}
+      <button>Guardar cualidades</button>
+    </form>
+    <p class="sub">Del 1 al 10 en pasos de 0,5. Solo las ve y edita un admin.</p>
+  </details>
+</section>
+{{end}}
+
 <h2>Entrenos</h2>
 {{if $pr.Sessions}}
 <ul class="breakdown">
@@ -46,37 +82,6 @@
 <p class="empty">Sin convocatorias esta temporada.</p>
 {{end}}
 
-{{if .User.Admin}}
-{{$sk := $pr.Skills}}
-<details class="card skills" id="cualidades">
-  <summary>Cualidades (privado)</summary>
-  {{if $sk}}
-  <div class="skills-view">
-    <div class="fut">
-      <div class="fut-top"><b>{{score $sk.Overall}}</b><span>{{with $p.PositionList}}{{index . 0}}{{end}}</span></div>
-      <div class="fut-name">{{$p.DisplayName}}</div>
-      <ul class="fut-stats">{{range skillDefs}}<li><b>{{scoreOf $sk .Key}}</b> {{.Short}}</li>{{end}}</ul>
-    </div>
-    <svg class="hex" viewBox="-20 -10 240 220" role="img" aria-label="Hexágono de cualidades">
-      {{range $l := hexLevels}}<polygon class="guide" points="{{hexGuide $l}}"/>{{end}}
-      <polygon class="value" points="{{$sk.Hex}}"/>
-      {{range $i, $d := skillDefs}}{{$xy := hexLabel $i}}<text x="{{index $xy 0}}" y="{{index $xy 1}}">{{$d.Short}} {{scoreOf $sk $d.Key}}</text>{{end}}
-    </svg>
-  </div>
-  {{else}}
-  <p class="sub">Aún sin valorar.</p>
-  {{end}}
-  <form method="post" action="/t/{{.Team.ID}}/players/{{$p.ID}}/skills" class="skills-form">
-    {{range skillDefs}}
-    <label class="field"><span>{{.Name}}</span>
-      <input type="number" name="{{.Key}}" min="1" max="10" step="0.5" inputmode="decimal" value="{{scoreOf $sk .Key}}" placeholder="1–10">
-    </label>
-    {{end}}
-    <button>Guardar cualidades</button>
-  </form>
-  <p class="sub">Del 1 al 10 en pasos de 0,5. Solo las ves tú (admin); plegadas para no enseñarlas sin querer.</p>
-</details>
-{{end}}
 
 <details class="card" style="margin-top:24px">
   <summary>Editar datos del jugador</summary>
