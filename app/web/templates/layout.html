@@ -13,9 +13,11 @@
 {{if .User.Email}}
 <header>
   {{if gt (len .Teams) 1}}
-  <select class="team-switch" aria-label="Cambiar de equipo" onchange="location.href=this.value">
-    {{range .Teams}}<option value="/t/{{.ID}}/{{if $.Tab}}{{$.Tab}}{{else}}trainings{{end}}" {{if eq .ID $.Team.ID}}selected{{end}}>{{.Name}}</option>{{end}}
-  </select>
+  {{/* Enlaces y no <select> + JS: sin navegación construida en el cliente. */}}
+  <details class="team-switch">
+    <summary>{{.Team.Name}} ▾</summary>
+    <ul>{{range .Teams}}{{if ne .ID $.Team.ID}}<li><a href="/t/{{.ID}}/{{if $.Tab}}{{$.Tab}}{{else}}trainings{{end}}">{{.Name}}</a></li>{{end}}{{end}}</ul>
+  </details>
   {{else}}
   <h1>{{with .Team}}{{.Name}}{{else}}Equipos{{end}}</h1>
   {{end}}

@@ -152,4 +152,9 @@ ul.booked li:last-child { border-bottom: 0; }
 ul.breakdown { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
 ul.breakdown li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
 ul.breakdown li b { margin-left: auto; }
-.team-switch { font-size: 18px; font-weight: 700; max-width: 70%; padding: 6px 8px; }
+.team-switch { position: relative; max-width: 70%; }
+.team-switch summary { font-size: 18px; font-weight: 700; cursor: pointer; list-style: none; }
+.team-switch summary::-webkit-details-marker { display: none; }
+.team-switch ul { position: absolute; z-index: 2; left: 0; top: 100%; margin: 6px 0 0; padding: 6px 0; list-style: none; min-width: 200px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.15); }
+.team-switch li a { display: block; padding: 10px 14px; text-decoration: none; color: var(--fg); }
