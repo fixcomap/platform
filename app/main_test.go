@@ -394,6 +394,21 @@ func TestFlow(t *testing.T) {
 		t.Fatal("falta el selector de equipo con varios equipos")
 	}
 
+	// Posiciones (principal primero) y cualidades del 1 al 10 en pasos de 0,5.
+	do("POST", base+"/players/"+itoa(ps[0].ID), url.Values{"first_name": {"Cristóbal"}, "nickname": {"Cristo"}, "number": {"1"},
+		"active": {"1"}, "main_pos": {"MC"}, "pos": {"DFC", "MC"}}, 303)
+	if p, _ := a.st.player(context.Background(), mustID(t, base), ps[0].ID); p.Positions != "MC,DFC" {
+		t.Fatalf("posiciones: %q", p.Positions)
+	}
+	do("POST", base+"/players/"+itoa(ps[0].ID)+"/skills", url.Values{"pace": {"7,5"}, "passing": {"11"}}, 400)
+	do("POST", base+"/players/"+itoa(ps[0].ID)+"/skills", url.Values{"pace": {"7,5"}, "passing": {"9"}, "defending": {"6"}}, 303)
+	if sk, _ := a.st.skills(context.Background(), ps[0].ID); sk["pace"] != 7.5 || sk.Overall() != 7.5 || len(sk) != 3 {
+		t.Fatalf("cualidades: %v overall=%v", sk, sk.Overall())
+	}
+	if body := do("GET", base+"/players/"+itoa(ps[0].ID), nil, 200).Body.String(); !strings.Contains(body, "Cualidades (privado)") || !strings.Contains(body, "7,5") {
+		t.Fatal("el perfil no muestra las cualidades al admin")
+	}
+
 	// Otro equipo sin acceso: sin admin no se ve (404).
 	a.auth.devUser = ""
 	a.auth.cfg = Config{SessionKey: strings.Repeat("k", 32)}

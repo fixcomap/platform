@@ -105,6 +105,7 @@ type Player struct {
 	Nickname  string
 	Number    sql.NullInt64
 	Active    bool
+	Positions string // códigos separados por comas, la primera la principal
 	// Solo en listados con estadística.
 	Attended, Trainings, Injured, Justified int
 	// Entrenos del ciclo (desde el último partido); solo donde se muestra.
@@ -330,7 +331,7 @@ func (s store) removeCoach(ctx context.Context, teamID int64, email string) erro
 // sobre entrenos en los que se pasó lista estando él en el equipo.
 func (s store) players(ctx context.Context, teamID int64, onlyActive bool) ([]Player, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active,
+		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active, p.positions,
 		       count(a.*) FILTER (WHERE a.status IN ('presente', 'tarde')), count(a.*),
 		       count(a.*) FILTER (WHERE a.status = 'lesionado'),
 		       count(a.*) FILTER (WHERE a.status = 'justificado')
@@ -345,7 +346,7 @@ func (s store) players(ctx context.Context, teamID int64, onlyActive bool) ([]Pl
 	var out []Player
 	for rows.Next() {
 		var p Player
-		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active,
+		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active, &p.Positions,
 			&p.Attended, &p.Trainings, &p.Injured, &p.Justified); err != nil {
 			return nil, err
 		}
@@ -411,9 +412,9 @@ func (s store) attendanceAlerts(ctx context.Context, teamID int64) (map[int64]in
 
 func (s store) player(ctx context.Context, teamID, id int64) (Player, error) {
 	p := Player{ID: id}
-	err := s.db.QueryRowContext(ctx, `SELECT first_name, last_name, nickname, number, active
+	err := s.db.QueryRowContext(ctx, `SELECT first_name, last_name, nickname, number, active, positions
 		FROM players WHERE team_id = $1 AND id = $2`, teamID, id).
-		Scan(&p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active)
+		Scan(&p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active, &p.Positions)
 	return p, err
 }
 
@@ -431,13 +432,13 @@ func (s store) numberHolder(ctx context.Context, teamID, playerID, number int64)
 
 func (s store) savePlayer(ctx context.Context, teamID int64, p Player) error {
 	if p.ID == 0 {
-		_, err := s.db.ExecContext(ctx, `INSERT INTO players (team_id, first_name, last_name, nickname, number)
-			VALUES ($1, $2, $3, $4, $5)`, teamID, p.FirstName, p.LastName, p.Nickname, p.Number)
+		_, err := s.db.ExecContext(ctx, `INSERT INTO players (team_id, first_name, last_name, nickname, number, positions)
+			VALUES ($1, $2, $3, $4, $5, $6)`, teamID, p.FirstName, p.LastName, p.Nickname, p.Number, p.Positions)
 		return err
 	}
 	_, err := s.db.ExecContext(ctx, `UPDATE players SET first_name = $3, last_name = $4, nickname = $5,
-		number = $6, active = $7 WHERE team_id = $1 AND id = $2`,
-		teamID, p.ID, p.FirstName, p.LastName, p.Nickname, p.Number, p.Active)
+		number = $6, active = $7, positions = $8 WHERE team_id = $1 AND id = $2`,
+		teamID, p.ID, p.FirstName, p.LastName, p.Nickname, p.Number, p.Active, p.Positions)
 	return err
 }
 
@@ -707,7 +708,7 @@ func (s store) scorers(ctx context.Context, teamID int64, today time.Time) ([]Sc
 
 func (s store) callupPlayers(ctx context.Context, callupID int64) ([]Player, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active, cp.yellow, cp.red, cp.goalkeeper, cp.red_games, cp.goals
+		SELECT p.id, p.first_name, p.last_name, p.nickname, p.number, p.active, p.positions, cp.yellow, cp.red, cp.goalkeeper, cp.red_games, cp.goals
 		FROM callup_players cp JOIN players p ON p.id = cp.player_id
 		WHERE cp.callup_id = $1 ORDER BY cp.position`, callupID)
 	if err != nil {
@@ -717,7 +718,7 @@ func (s store) callupPlayers(ctx context.Context, callupID int64) ([]Player, err
 	var out []Player
 	for rows.Next() {
 		var p Player
-		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active,
+		if err := rows.Scan(&p.ID, &p.FirstName, &p.LastName, &p.Nickname, &p.Number, &p.Active, &p.Positions,
 			&p.Yellow, &p.Red, &p.Goalkeeper, &p.RedGames, &p.Goals); err != nil {
 			return nil, err
 		}
