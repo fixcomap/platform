@@ -367,6 +367,24 @@ func TestFlow(t *testing.T) {
 		t.Fatal("falta el aviso de llegadas tarde")
 	}
 
+	// Perfil: solo sus datos (asistencia, partidos, goles, tarjetas).
+	pr, err := a.st.profile(context.Background(), mustID(t, base), ps[0].ID, mustDay(t, "2026-11-10"))
+	if err != nil || pr.Sessions == 0 || pr.ByStatus[Tarde] != 5 || len(pr.Matches) == 0 {
+		t.Fatalf("perfil: %v %+v", err, pr)
+	}
+	if body := do("GET", base+"/players/"+itoa(ps[0].ID), nil, 200).Body.String(); !strings.Contains(body, "asistencia") ||
+		!strings.Contains(body, "Editar datos del jugador") {
+		t.Fatal("perfil incompleto")
+	}
+
+	// Selector de equipo: el admin ve los dos equipos en la cabecera.
+	if _, err := a.st.createTeam(context.Background(), "Cadete", "coach@test.dev"); err != nil {
+		t.Fatal(err)
+	}
+	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "team-switch") || !strings.Contains(body, "Cadete") {
+		t.Fatal("falta el selector de equipo con varios equipos")
+	}
+
 	// Otro equipo sin acceso: sin admin no se ve (404).
 	a.auth.devUser = ""
 	a.auth.cfg = Config{SessionKey: strings.Repeat("k", 32)}

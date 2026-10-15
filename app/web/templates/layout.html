@@ -12,7 +12,13 @@
 <body>
 {{if .User.Email}}
 <header>
+  {{if gt (len .Teams) 1}}
+  <select class="team-switch" aria-label="Cambiar de equipo" onchange="location.href=this.value">
+    {{range .Teams}}<option value="/t/{{.ID}}/{{if $.Tab}}{{$.Tab}}{{else}}trainings{{end}}" {{if eq .ID $.Team.ID}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  {{else}}
   <h1>{{with .Team}}{{.Name}}{{else}}Equipos{{end}}</h1>
+  {{end}}
   <form method="post" action="/logout"><button class="ghost small">Salir</button></form>
 </header>
 {{with .Team}}
