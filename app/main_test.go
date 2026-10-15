@@ -348,6 +348,11 @@ func TestFlow(t *testing.T) {
 	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "Amonestados de la temporada") {
 		t.Fatal("falta la sección de amonestados")
 	}
+	// Roja directa de 3 partidos en el 25/10 → sección de expulsiones con 3 pendientes.
+	do("POST", next+"/cards", url.Values{"y_" + itoa(ps[1].ID): {"1"}, "r_" + itoa(ps[1].ID): {"1"}, "rg_" + itoa(ps[1].ID): {"3"}}, 303)
+	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "Expulsiones y sanciones") || !strings.Contains(body, "3 partidos") {
+		t.Fatal("falta la sección de expulsiones con los partidos pendientes")
+	}
 	// Si el del 18/10 fue amistoso, las tarjetas no cuentan.
 	do("POST", cu+"/edit", url.Values{"day": {"2026-10-18"}, "friendly": {"1"}}, 303)
 	if body := do("GET", next, nil, 200).Body.String(); strings.Contains(body, "Sancionado") {

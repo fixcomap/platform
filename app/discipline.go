@@ -39,8 +39,12 @@ type Discipline struct {
 	YellowsBefore map[int64]map[int64]int
 	// Next: sancionados para el próximo partido oficial aún no creado.
 	Next map[int64]string
+	// NextGames: partidos de sanción que le quedan por cumplir.
+	NextGames map[int64]int
 	// Yellows: amarillas acumuladas en la temporada en curso (para la ficha).
 	Yellows map[int64]int
+	// Expulsiones de la temporada en curso: rojas directas y dobles amarillas.
+	Reds, DoubleYellows map[int64]int
 }
 
 func seasonOf(d time.Time) int {
@@ -58,7 +62,9 @@ type pending struct {
 // computeDiscipline recorre los partidos en orden cronológico.
 func computeDiscipline(matches []matchCards, today time.Time) Discipline {
 	d := Discipline{Suspended: map[int64]map[int64]string{}, YellowsBefore: map[int64]map[int64]int{},
-		Next: map[int64]string{}, Yellows: map[int64]int{}}
+		Next: map[int64]string{}, NextGames: map[int64]int{}, Yellows: map[int64]int{},
+		Reds: map[int64]int{}, DoubleYellows: map[int64]int{}}
+	reds, doubles := map[int64]int{}, map[int64]int{}
 	acc := map[int64]int{}
 	pend := map[int64]*pending{}
 	season := -1
@@ -68,6 +74,7 @@ func computeDiscipline(matches []matchCards, today time.Time) Discipline {
 		}
 		if s := seasonOf(m.Day); s != season {
 			season, acc = s, map[int64]int{}
+			reds, doubles = map[int64]int{}, map[int64]int{}
 		}
 		// Primero se cumplen las sanciones pendientes con este partido.
 		d.Suspended[m.ID] = map[int64]string{}
@@ -92,6 +99,7 @@ func computeDiscipline(matches []matchCards, today time.Time) Discipline {
 			}
 			switch c.Yellow {
 			case 2:
+				doubles[pid]++
 				add(1, "doble amarilla")
 			case 1:
 				acc[pid]++
@@ -100,6 +108,7 @@ func computeDiscipline(matches []matchCards, today time.Time) Discipline {
 				}
 			}
 			if c.Red {
+				reds[pid]++
 				add(max(c.RedGames, 1), "roja directa")
 			}
 		}
@@ -107,10 +116,11 @@ func computeDiscipline(matches []matchCards, today time.Time) Discipline {
 	for pid, p := range pend {
 		if p.games > 0 {
 			d.Next[pid] = p.reason
+			d.NextGames[pid] = p.games
 		}
 	}
 	if season == seasonOf(today) {
-		d.Yellows = acc
+		d.Yellows, d.Reds, d.DoubleYellows = acc, reds, doubles
 	}
 	return d
 }

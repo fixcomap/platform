@@ -62,6 +62,23 @@ var funcs = template.FuncMap{
 	"lateWindow": func() int { return lateWindow },
 }
 
+// sentOff: sancionados ahora y expulsados en la temporada, sancionados primero.
+func sentOff(ps []Player) []Player {
+	var out []Player
+	for _, p := range ps {
+		if p.Active && (p.PendingGames > 0 || p.Reds > 0 || p.Doubles > 0) {
+			out = append(out, p)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].PendingGames != out[j].PendingGames {
+			return out[i].PendingGames > out[j].PendingGames
+		}
+		return out[i].Reds+out[i].Doubles > out[j].Reds+out[j].Doubles
+	})
+	return out
+}
+
 // booked: amonestados de la temporada, con sancionados y apercibidos primero.
 func booked(ps []Player) []Player {
 	var out []Player
@@ -350,7 +367,10 @@ func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	for i := range ps {
 		ps[i].Suspension = disc.Next[ps[i].ID]
+		ps[i].PendingGames = disc.NextGames[ps[i].ID]
 		ps[i].CycleYellows = disc.Yellows[ps[i].ID]
+		ps[i].Reds = disc.Reds[ps[i].ID]
+		ps[i].Doubles = disc.DoubleYellows[ps[i].ID]
 	}
 	scorers, err := a.st.scorers(r.Context(), t.ID, now)
 	if err != nil {
@@ -366,7 +386,7 @@ func (a *app) playersPage(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	a.render(w, r, "players", view{Team: &t, Tab: "players", Title: "Jugadores", Data: map[string]any{
 		"Players": ps, "Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)}, "Scorers": scorers,
-		"Booked": booked(ps),
+		"Booked": booked(ps), "Sent": sentOff(ps),
 	}})
 }
 
@@ -394,6 +414,7 @@ func (a *app) playerPage(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	pr.Player.Suspension = disc.Next[id]
+	pr.Player.PendingGames = disc.NextGames[id]
 	pr.Player.CycleYellows = disc.Yellows[id]
 	pr.Player.Streak = streak[id]
 	pr.Player.Late = late[id]

@@ -36,6 +36,9 @@ func TestComputeDiscipline(t *testing.T) {
 	if d.Yellows[b] != 0 {
 		t.Errorf("la doble amarilla no suma al ciclo: %d", d.Yellows[b])
 	}
+	if d.Reds[c] != 1 || d.DoubleYellows[b] != 1 {
+		t.Errorf("expulsiones: rojas=%v dobles=%v", d.Reds, d.DoubleYellows)
+	}
 	if len(d.Next) != 0 {
 		t.Errorf("sin sanciones pendientes tras el 7: %v", d.Next)
 	}

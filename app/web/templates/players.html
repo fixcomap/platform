@@ -25,6 +25,16 @@
   <p class="sub">Solo partidos oficiales, desde el 1 de agosto.</p>
 </details>
 {{end}}
+{{with .Data.Sent}}
+<details class="card" open>
+  <summary>Expulsiones y sanciones</summary>
+  <ul class="booked">{{range .}}<li>
+    <span>{{.DisplayName}}{{if .PendingGames}} <span class="badge bad">Sancionado · {{.Suspension}} · {{.PendingGames}} partido{{if gt .PendingGames 1}}s{{end}}</span>{{end}}</span>
+    <b>{{if .Reds}}<span class="card-r" title="rojas directas"></span> {{.Reds}}{{end}}{{if .Doubles}} <span class="card-y">2</span> {{.Doubles}}{{end}}</b>
+  </li>{{end}}</ul>
+  <p class="sub">Rojas directas y dobles amarillas en partidos oficiales de la temporada. «N partidos» = los que le quedan por cumplir.</p>
+</details>
+{{end}}
 {{with .Data.Booked}}
 <details class="card" open>
   <summary>Amonestados de la temporada</summary>
