@@ -302,6 +302,8 @@ func (a *app) routes(mux *http.ServeMux) {
 	t("GET /t/{team}/players/{player}", a.playerPage)
 	t("POST /t/{team}/players/{player}", a.savePlayer)
 	t("GET /t/{team}/players/{player}/edit", a.playerEditPage)
+	// Borrar es irreversible (se pierde el historial): solo admin.
+	t("POST /t/{team}/players/{player}/delete", adminOnly(a.deletePlayer))
 	t("GET /t/{team}/trainings", a.trainingsPage)
 	t("POST /t/{team}/trainings", a.createTraining)
 	t("GET /t/{team}/trainings/{training}", a.trainingPage)
@@ -521,6 +523,19 @@ func (a *app) playerEditPage(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	a.render(w, r, "player_edit", view{Team: &t, Tab: "players", Title: "Editar " + p.DisplayName(),
 		Data: map[string]any{"Player": p, "Skills": sk, "Notes": notes}})
+}
+
+func (a *app) deletePlayer(w http.ResponseWriter, r *http.Request, t Team) {
+	id, err := pathID(r, "player")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := a.st.deletePlayer(r.Context(), t.ID, id); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	redirect(w, r, teamURL(t, "/players"), http.StatusSeeOther)
 }
 
 // skillsForm lee las cualidades del formulario de edición; se validan antes
