@@ -643,13 +643,13 @@ func (s store) createCallup(ctx context.Context, teamID int64, c Callup) (int64,
 	return id, err
 }
 
-// updateCallup guarda datos del partido y resultado (los goles, ambos o ninguno).
+// updateCallup guarda los datos del partido; el resultado va aparte
+// (setResult) porque se rellena después de jugarlo.
 func (s store) updateCallup(ctx context.Context, teamID int64, c Callup) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE callups SET day = $3, rival = $4, place = $5, kickoff = $6,
-		meet_time = $7, home = $8, goals_for = $9, goals_against = $10, friendly = $11
+		meet_time = $7, home = $8, friendly = $9
 		WHERE team_id = $1 AND id = $2`,
-		teamID, c.ID, c.Day, c.Rival, c.Place, nullIfEmpty(c.Kickoff), nullIfEmpty(c.Meet), c.Home,
-		c.GoalsFor, c.GoalsAg, c.Friendly)
+		teamID, c.ID, c.Day, c.Rival, c.Place, nullIfEmpty(c.Kickoff), nullIfEmpty(c.Meet), c.Home, c.Friendly)
 	if err != nil {
 		return err
 	}
@@ -659,9 +659,17 @@ func (s store) updateCallup(ctx context.Context, teamID int64, c Callup) error {
 	return nil
 }
 
-func (s store) setCallupNotes(ctx context.Context, teamID, callupID int64, notes string) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE callups SET notes = $3 WHERE team_id = $1 AND id = $2", teamID, callupID, notes)
-	return err
+// setResult: goles (ambos o ninguno) y observaciones del partido.
+func (s store) setResult(ctx context.Context, teamID, callupID int64, gf, ga sql.NullInt64, notes string) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE callups SET goals_for = $3, goals_against = $4, notes = $5
+		WHERE team_id = $1 AND id = $2`, teamID, callupID, gf, ga, notes)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // setMatchStats: goles y tarjetas de un convocado; el UPDATE solo encuentra
@@ -793,6 +801,11 @@ func (s store) setRoles(ctx context.Context, teamID, callupID, captain int64, go
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return sql.ErrNoRows
+	}
+	// Lista vacía y no nil: pgx manda nil como NULL, y ANY(NULL) dejaría
+	// goalkeeper a NULL (viola NOT NULL) en vez de false.
+	if goalkeepers == nil {
+		goalkeepers = []int64{}
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE callup_players SET goalkeeper = (player_id = ANY($2))
 		WHERE callup_id = $1`, callupID, goalkeepers); err != nil {
