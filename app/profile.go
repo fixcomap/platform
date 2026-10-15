@@ -84,8 +84,8 @@ func (s store) profile(ctx context.Context, teamID, playerID int64, today time.T
 		WHERE team_id = $1 AND NOT friendly AND day >= $2`, teamID, since).Scan(&pr.Official); err != nil {
 		return Profile{}, err
 	}
-	rows, err = s.db.QueryContext(ctx, `SELECT `+callupCols+`, cp.goals, cp.yellow, cp.red, cp.goalkeeper
-		FROM callups c JOIN callup_players cp ON cp.callup_id = c.id
+	rows, err = s.db.QueryContext(ctx, `SELECT `+callupCols+`, cp.goals, cp.yellow, cp.red, `+isGoalkeeperSQL+`
+		FROM callups c JOIN callup_players cp ON cp.callup_id = c.id JOIN players p ON p.id = cp.player_id
 		WHERE c.team_id = $1 AND cp.player_id = $2 AND c.day >= $3
 		ORDER BY c.day DESC, c.id DESC`, teamID, playerID, since)
 	if err != nil {

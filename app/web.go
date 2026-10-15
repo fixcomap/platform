@@ -117,6 +117,12 @@ func booked(ps []Player) []Player {
 	return out
 }
 
+// today: fecha de hoy en España, a medianoche UTC como las columnas date.
+func today() time.Time {
+	n := time.Now().In(madrid)
+	return time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.UTC)
+}
+
 // withCycle rellena Player.Cycle con una marca por entreno del ciclo.
 func withCycle(ps []Player, ts []Training, marks map[int64]map[int64]Status) {
 	for i := range ps {
@@ -289,8 +295,8 @@ func (a *app) routes(mux *http.ServeMux) {
 	t("POST /t/{team}/callups/{callup}/add", a.callupAdd)
 	t("POST /t/{team}/callups/{callup}/remove", a.callupRemove)
 	t("POST /t/{team}/callups/{callup}/edit", a.editCallup)
-	t("POST /t/{team}/callups/{callup}/roles", a.callupRoles)
-	t("POST /t/{team}/callups/{callup}/cards", a.callupCards)
+	t("POST /t/{team}/callups/{callup}/roster", a.callupRoster)
+	t("POST /t/{team}/callups/{callup}/result", a.callupResult)
 	t("POST /t/{team}/callups/{callup}/lineup", a.callupLineup)
 	t("POST /t/{team}/callups/{callup}/delete", a.deleteCallup)
 	// Ajustes (entrenadores, plantilla y su layout) solo para admins: un
@@ -834,8 +840,11 @@ func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
 	data := map[string]any{"Callup": c, "In": in, "Available": available,
 		"Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)},
 		// La imagen solo se genera con capitán y al menos un portero marcados.
-		"RolesReady": c.Captain.Valid && goalkeepers > 0, "Info": callupInfo(t, c),
+		"RolesReady": c.Captain.Valid && goalkeepers > 0, "HasCaptain": c.Captain.Valid, "HasGK": goalkeepers > 0,
+		"Info":        callupInfo(t, c),
 		"SuspendedIn": suspendedIn, "Formations": formations,
+		// Goles y tarjetas en la lista solo desde el día del partido.
+		"StatsOpen": !c.Day.After(today()),
 		// Goles por jugador que superan el marcador: casi siempre un error al cargar.
 		"GoalsMismatch": c.GoalsFor.Valid && int64(scored) > c.GoalsFor.Int64, "Scored": scored}
 	if l, at, err := a.layout(r, t.ID); err == nil {
@@ -905,22 +914,6 @@ func (a *app) editCallup(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	c.ID = id
-	// Resultado: los dos goles o ninguno (partido sin jugar).
-	gf, ga := strings.TrimSpace(r.FormValue("goals_for")), strings.TrimSpace(r.FormValue("goals_against"))
-	if (gf == "") != (ga == "") {
-		httpError(w, r, "Resultado incompleto: faltan los goles de uno de los dos equipos.", http.StatusBadRequest)
-		return
-	}
-	if gf != "" {
-		f, err1 := strconv.ParseInt(gf, 10, 32)
-		g, err2 := strconv.ParseInt(ga, 10, 32)
-		if err1 != nil || err2 != nil || f < 0 || g < 0 || f > 99 || g > 99 {
-			httpError(w, r, "Resultado no válido.", http.StatusBadRequest)
-			return
-		}
-		c.GoalsFor = sql.NullInt64{Int64: f, Valid: true}
-		c.GoalsAg = sql.NullInt64{Int64: g, Valid: true}
-	}
 	if err := a.st.updateCallup(r.Context(), t.ID, c); err != nil {
 		a.fail(w, r, err)
 		return
@@ -928,7 +921,10 @@ func (a *app) editCallup(w http.ResponseWriter, r *http.Request, t Team) {
 	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
 }
 
-func (a *app) callupRoles(w http.ResponseWriter, r *http.Request, t Team) {
+// callupRoster guarda la lista de convocados de una vez: capitán y, desde el
+// día del partido (with_stats), goles y tarjetas. Los porteros salen solos
+// de la posición POR del perfil.
+func (a *app) callupRoster(w http.ResponseWriter, r *http.Request, t Team) {
 	id, ok := a.callupID(w, r)
 	if !ok {
 		return
@@ -938,17 +934,70 @@ func (a *app) callupRoles(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	captain, _ := strconv.ParseInt(r.PostFormValue("captain"), 10, 64)
-	var gks []int64
-	for _, v := range r.PostForm["goalkeeper"] {
-		if pid, err := strconv.ParseInt(v, 10, 64); err == nil {
-			gks = append(gks, pid)
-		}
-	}
-	if err := a.st.setRoles(r.Context(), t.ID, id, captain, gks); err != nil {
+	if err := a.st.setCaptain(r.Context(), t.ID, id, captain); err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#imagen"), http.StatusSeeOther)
+	if r.PostFormValue("with_stats") != "" {
+		in, err := a.st.callupPlayers(r.Context(), id)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		for _, p := range in {
+			pid := strconv.FormatInt(p.ID, 10)
+			y, err := strconv.Atoi(r.PostFormValue("y_" + pid))
+			if err != nil || y < 0 || y > 2 {
+				y = 0
+			}
+			games, err := strconv.Atoi(r.PostFormValue("rg_" + pid))
+			if err != nil || games < 1 || games > 20 {
+				games = 1
+			}
+			goals, err := strconv.Atoi(r.PostFormValue("g_" + pid))
+			if err != nil || goals < 0 || goals > 30 {
+				goals = 0
+			}
+			if err := a.st.setMatchStats(r.Context(), t.ID, id, p.ID, goals, y, r.PostFormValue("r_"+pid) != "", games); err != nil {
+				a.fail(w, r, err)
+				return
+			}
+		}
+	}
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#convocados"), http.StatusSeeOther)
+}
+
+// callupResult: resultado (los dos goles o ninguno) y observaciones.
+func (a *app) callupResult(w http.ResponseWriter, r *http.Request, t Team) {
+	id, ok := a.callupID(w, r)
+	if !ok {
+		return
+	}
+	var gf, ga sql.NullInt64
+	f, g := strings.TrimSpace(r.FormValue("goals_for")), strings.TrimSpace(r.FormValue("goals_against"))
+	if (f == "") != (g == "") {
+		httpError(w, r, "Resultado incompleto: faltan los goles de uno de los dos equipos.", http.StatusBadRequest)
+		return
+	}
+	if f != "" {
+		fv, err1 := strconv.ParseInt(f, 10, 32)
+		gv, err2 := strconv.ParseInt(g, 10, 32)
+		if err1 != nil || err2 != nil || fv < 0 || gv < 0 || fv > 99 || gv > 99 {
+			httpError(w, r, "Resultado no válido.", http.StatusBadRequest)
+			return
+		}
+		gf, ga = sql.NullInt64{Int64: fv, Valid: true}, sql.NullInt64{Int64: gv, Valid: true}
+	}
+	notes := strings.TrimSpace(r.FormValue("notes"))
+	if len(notes) > 4000 {
+		httpError(w, r, "Observaciones demasiado largas (máx. 4000 caracteres).", http.StatusBadRequest)
+		return
+	}
+	if err := a.st.setResult(r.Context(), t.ID, id, gf, ga, notes); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#resultado"), http.StatusSeeOther)
 }
 
 // callupLineup guarda formación y puestos (slot_0..slot_10 = id de jugador).
@@ -986,47 +1035,6 @@ func (a *app) callupLineup(w http.ResponseWriter, r *http.Request, t Team) {
 	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#planteamiento"), http.StatusSeeOther)
 }
 
-func (a *app) callupCards(w http.ResponseWriter, r *http.Request, t Team) {
-	id, ok := a.callupID(w, r)
-	if !ok {
-		return
-	}
-	notes := strings.TrimSpace(r.FormValue("notes"))
-	if len(notes) > 4000 {
-		httpError(w, r, "Observaciones demasiado largas (máx. 4000 caracteres).", http.StatusBadRequest)
-		return
-	}
-	if err := a.st.setCallupNotes(r.Context(), t.ID, id, notes); err != nil {
-		a.fail(w, r, err)
-		return
-	}
-	in, err := a.st.callupPlayers(r.Context(), id)
-	if err != nil {
-		a.fail(w, r, err)
-		return
-	}
-	for _, p := range in {
-		pid := strconv.FormatInt(p.ID, 10)
-		y, err := strconv.Atoi(r.FormValue("y_" + pid))
-		if err != nil || y < 0 || y > 2 {
-			y = 0
-		}
-		games, err := strconv.Atoi(r.FormValue("rg_" + pid))
-		if err != nil || games < 1 || games > 20 {
-			games = 1
-		}
-		goals, err := strconv.Atoi(r.FormValue("g_" + pid))
-		if err != nil || goals < 0 || goals > 30 {
-			goals = 0
-		}
-		if err := a.st.setMatchStats(r.Context(), t.ID, id, p.ID, goals, y, r.FormValue("r_"+pid) != "", games); err != nil {
-			a.fail(w, r, err)
-			return
-		}
-	}
-	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#partido"), http.StatusSeeOther)
-}
-
 func (a *app) callupAction(w http.ResponseWriter, r *http.Request, t Team,
 	f func(teamID, callupID, playerID int64) error) {
 	cid, err := pathID(r, "callup")
@@ -1048,7 +1056,7 @@ func (a *app) callupAction(w http.ResponseWriter, r *http.Request, t Team,
 }
 
 // callupAdd añade de una vez los jugadores marcados en Disponibles y lleva a
-// capitán y porteros: el siguiente paso antes de la imagen.
+// la lista de convocados, donde se marcan capitán y porteros.
 func (a *app) callupAdd(w http.ResponseWriter, r *http.Request, t Team) {
 	cid, ok := a.callupID(w, r)
 	if !ok {
@@ -1071,11 +1079,30 @@ func (a *app) callupAdd(w http.ResponseWriter, r *http.Request, t Team) {
 		redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#disponibles"), http.StatusSeeOther)
 		return
 	}
+	// Un sancionado no puede jugar este partido (en amistosos no hay sanción:
+	// Suspended no tiene entrada para ellos).
+	disc, err := a.st.discipline(r.Context(), t.ID, today())
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	for _, pid := range ids {
+		if reason := disc.Suspended[cid][pid]; reason != "" {
+			p, err := a.st.player(r.Context(), t.ID, pid)
+			if err != nil {
+				a.fail(w, r, err)
+				return
+			}
+			httpError(w, r, fmt.Sprintf("%s está sancionado (%s) y no puede jugar este partido.", p.DisplayName(), reason),
+				http.StatusConflict)
+			return
+		}
+	}
 	if err := a.st.addToCallup(r.Context(), t.ID, cid, ids); err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#imagen"), http.StatusSeeOther)
+	redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(cid, 10)+"#convocados"), http.StatusSeeOther)
 }
 
 func (a *app) callupRemove(w http.ResponseWriter, r *http.Request, t Team) {
