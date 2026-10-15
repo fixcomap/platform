@@ -1,0 +1,318 @@
+# Pipeline estándar de la org. Lo llama el ci.yml idéntico de cada repo
+# (copia canónica en caller/ci.yml) y decide qué hacer:
+#
+#   resolve   catalog/<repo>.yaml de la misma versión de platform que este
+#             workflow -> tipo de proyecto, config y etapa (preview | production).
+#             Repo sin entrada en el catálogo: no se hace nada (no-action).
+#   comunes   gitflow (solo PR) + gitleaks/trivy, para cualquier tipo.
+#   static    checks HTML/CSS + Cloudflare Pages (PR/develop: preview; main: producción).
+#   ok        check único que exigen los rulesets.
+#
+# Etapas por evento:
+#   pull_request -> checks + preview (las PRs de forks solo checks: sin secrets)
+#   push develop -> checks + preview
+#   push main    -> checks + producción
+name: cicd
+
+on:
+  workflow_call:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  WRANGLER_VERSION: 4.132.0
+
+jobs:
+  resolve:
+    name: resolve (catálogo)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      type: ${{ steps.catalog.outputs.type }}
+      platform_ref: ${{ steps.ref.outputs.ref }}
+      environment: ${{ steps.stage.outputs.environment }}
+      deploy: ${{ steps.stage.outputs.deploy }}
+      site_dir: ${{ steps.catalog.outputs.site_dir }}
+      build_cmd: ${{ steps.catalog.outputs.build_cmd }}
+      node_version: ${{ steps.catalog.outputs.node_version }}
+      require_csp: ${{ steps.catalog.outputs.require_csp }}
+      pages_project: ${{ steps.catalog.outputs.pages_project }}
+      production_url: ${{ steps.catalog.outputs.production_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/workflows
+          persist-credentials: false
+
+      - name: versión de platform
+        # La ref con la que el ci.yml del repo llama a este workflow: el catálogo
+        # se lee de esa misma versión, así framework y catálogo nunca se desfasan.
+        id: ref
+        run: |
+          file="${GITHUB_WORKFLOW_REF#*/*/}"; file="${file%@*}"
+          ref=$(grep -oE 'fixcomap/platform/\.github/workflows/cicd\.yml@[^[:space:]#]+' "$file" | head -1 | cut -d@ -f2)
+          [ -n "$ref" ] || { echo "::error file=$file::no llama a fixcomap/platform/.github/workflows/cicd.yml@<ref>"; exit 1; }
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "CALLER=$file" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fixcomap/platform
+          ref: ${{ steps.ref.outputs.ref }}
+          path: .platform
+          sparse-checkout: |
+            catalog
+            caller
+          persist-credentials: false
+
+      - name: ci.yml estándar
+        # Aviso, no fallo: el caller solo debe diferir en la versión.
+        run: |
+          norm() { sed -E 's#(cicd\.yml)@[^[:space:]#]+#\1@REF#' "$1"; }
+          diff <(norm .platform/caller/ci.yml) <(norm "$CALLER") >/dev/null \
+            || echo "::warning file=$CALLER::difiere de platform/caller/ci.yml; usar la copia canónica"
+
+      - name: catálogo
+        id: catalog
+        run: |
+          f=".platform/catalog/${GITHUB_REPOSITORY#*/}.yaml"
+          if [ ! -f "$f" ]; then
+            echo "type=none" >> "$GITHUB_OUTPUT"
+            echo "::notice::$GITHUB_REPOSITORY no está en catalog/: no-action"
+            echo "**$GITHUB_REPOSITORY** no está en el catálogo de platform: no-action" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          repo=$(yq -r '.repo' "$f")
+          [ "$repo" = "$GITHUB_REPOSITORY" ] || { echo "::error::$f es de $repo, no de $GITHUB_REPOSITORY"; exit 1; }
+          type=$(yq -r '.type' "$f")
+          {
+            echo "type=$type"
+            if [ "$type" = static ]; then
+              echo "site_dir=$(yq -r '.static.site_dir // "public"' "$f")"
+              echo "build_cmd=$(yq -r '.static.build_cmd // ""' "$f")"
+              echo "node_version=$(yq -r '.static.node_version // "22"' "$f")"
+              echo "require_csp=$(yq -r '.static.require_csp == false | not' "$f")"
+              echo "pages_project=$(yq -r '.static.pages_project' "$f")"
+              echo "production_url=https://$(yq -r '.static.hostnames[0]' "$f")"
+            fi
+          } >> "$GITHUB_OUTPUT"
+          { echo "## $GITHUB_REPOSITORY: \`$type\` (platform@${{ steps.ref.outputs.ref }})"; echo '```yaml'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: etapa
+        id: stage
+        env:
+          FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" = main ]; then env=production; else env=preview; fi
+          deploy=true; [ "$FORK" = true ] && deploy=false
+          echo "environment=$env" >> "$GITHUB_OUTPUT"
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
+          echo "etapa: **$env** (deploy=$deploy)" >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------- comunes ----------
+
+  gitflow:
+    name: gitflow (rama origen)
+    needs: resolve
+    if: needs.resolve.outputs.type != 'none' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      # Los rulesets no pueden restringir la rama de origen: main solo recibe
+      # release/* y hotfix/*.
+      - env:
+          HEAD: ${{ github.head_ref }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          case "$BASE" in
+            main)    pat='^(release|hotfix)/' ;;
+            develop) pat='^(feature|bugfix|release|hotfix)/' ;;
+            *)       echo "rama base no contemplada: $BASE"; exit 1 ;;
+          esac
+          echo "$HEAD" | grep -Eq "$pat" || { echo "'$HEAD' no puede mergearse en '$BASE' (patrón: $pat)"; exit 1; }
+
+  security:
+    name: gitleaks + trivy
+    needs: resolve
+    if: needs.resolve.outputs.type != 'none'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks escanea el historial
+          persist-credentials: false
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 git --no-banner --redact --exit-code 1 .
+      - name: trivy fs (secret + misconfig)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  # ---------- static: Cloudflare Pages ----------
+
+  static-checks:
+    name: static (html + css)
+    needs: resolve
+    if: needs.resolve.outputs.type == 'static'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SITE_DIR: ${{ needs.resolve.outputs.site_dir }}
+      BUILD_CMD: ${{ needs.resolve.outputs.build_cmd }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ needs.resolve.outputs.node_version }}
+          cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || '' }}
+
+      - name: npm ci
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci --no-audit --no-fund
+
+      - name: build
+        if: env.BUILD_CMD != ''
+        run: |
+          bash -euo pipefail -c "$BUILD_CMD"
+          test -d "$SITE_DIR" || { echo "::error::el build no ha generado $SITE_DIR"; exit 1; }
+
+      - name: validar HTML (W3C Nu)
+        run: |
+          docker run --rm -v "$PWD/$SITE_DIR:/site:ro" ghcr.io/validator/validator:24.10.17 \
+            vnu --skip-non-html --errors-only --also-check-css /site
+
+      - name: stylelint
+        # Solo si el repo define el script.
+        if: hashFiles('package.json') != ''
+        run: npm run -s lint:css --if-present
+
+      - name: _headers con CSP
+        if: needs.resolve.outputs.require_csp == 'true'
+        run: |
+          f="$SITE_DIR/_headers"
+          test -f "$f" || { echo "::error::falta $f"; exit 1; }
+          grep -qE "Content-Security-Policy: default-src '(self|none)'" "$f" || { echo "::error::$f sin CSP con default-src 'self'|'none'"; exit 1; }
+          grep -q "frame-ancestors 'none'" "$f" || { echo "::error::$f sin frame-ancestors 'none'"; exit 1; }
+
+      - name: assets referenciados existen
+        # Aviso, no fallo: fotos y PDFs se suben a mano.
+        run: |
+          while IFS=: read -r html ref; do
+            path="${ref%%[?#]*}"
+            [ -f "$SITE_DIR$path" ] || echo "::warning file=$html::falta $SITE_DIR$path (referenciado en $html)"
+          done < <(grep -rHoE '(src|href)="/[^"/][^"]*"' --include='*.html' "$SITE_DIR" | sed -E 's/:(src|href)="/:/; s/"$//')
+
+  static-deploy:
+    name: static (pages ${{ needs.resolve.outputs.environment }})
+    needs: [resolve, gitflow, security, static-checks]
+    # gitflow solo corre en PR: skipped cuenta como bueno.
+    if: >-
+      !cancelled() && needs.resolve.outputs.type == 'static' && needs.resolve.outputs.deploy == 'true'
+      && needs.security.result == 'success' && needs.static-checks.result == 'success'
+      && contains(fromJSON('["success","skipped"]'), needs.gitflow.result)
+    runs-on: ubuntu-latest
+    # Aprobación y secrets de Cloudflare: environment del repo caller.
+    environment: ${{ needs.resolve.outputs.environment }}
+    permissions:
+      contents: read
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # En PR github.ref_name es "N/merge"; la rama real es head_ref.
+      BRANCH: ${{ github.head_ref || github.ref_name }}
+      PROJECT: ${{ needs.resolve.outputs.pages_project }}
+      SITE_DIR: ${{ needs.resolve.outputs.site_dir }}
+      BUILD_CMD: ${{ needs.resolve.outputs.build_cmd }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ needs.resolve.outputs.node_version }}
+          cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || '' }}
+
+      - name: build
+        if: env.BUILD_CMD != ''
+        run: |
+          npm ci --no-audit --no-fund
+          bash -euo pipefail -c "$BUILD_CMD"
+          test -d "$SITE_DIR" || { echo "::error::el build no ha generado $SITE_DIR"; exit 1; }
+
+      - name: wrangler pages deploy
+        id: deploy
+        # Despliega y solo si el proyecto no existe (8000007) lo crea y reintenta:
+        # listar proyectos dispara el rate limit de Pages (10429). El provider de
+        # OpenTofu no puede crear proyectos de direct upload (8000011); infra/dns
+        # lo importa después desde el catálogo.
+        run: |
+          deploy() {
+            npx --yes "wrangler@$WRANGLER_VERSION" pages deploy "$SITE_DIR" \
+              --project-name "$PROJECT" \
+              --branch "$BRANCH" \
+              --commit-hash "$GITHUB_SHA" \
+              --commit-message "$(git log -1 --format=%s)" \
+              --commit-dirty=false > deploy.log 2>&1
+          }
+          if ! deploy; then
+            cat deploy.log
+            grep -qE 'Project not found|8000007|does not exist' deploy.log || exit 1
+            echo "proyecto $PROJECT no existe: se crea"
+            npx --yes "wrangler@$WRANGLER_VERSION" pages project create "$PROJECT" --production-branch main
+            deploy || { cat deploy.log; exit 1; }
+          fi
+          cat deploy.log
+          url=$(grep -oE 'https://[a-z0-9.-]+\.pages\.dev' deploy.log | tail -1)
+          [ -n "$url" ] || { echo "::error::wrangler no ha devuelto URL"; exit 1; }
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "- rama \`$BRANCH\` → $url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: smoke test
+        env:
+          URLS: ${{ steps.deploy.outputs.url }} ${{ needs.resolve.outputs.environment == 'production' && needs.resolve.outputs.production_url || '' }}
+        run: |
+          for u in $URLS; do
+            ok=0
+            for _ in $(seq 1 12); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$u/" || true)
+              [ "$code" = "200" ] && { echo "$u → 200"; ok=1; break; }
+              sleep 10
+            done
+            [ "$ok" = 1 ] || { echo "::error::$u no responde 200 tras el deploy (último código: $code)"; exit 1; }
+          done
+
+  # ---------- resultado ----------
+
+  # Único check que exigen los rulesets, igual para todos los repos y tipos: los
+  # jobs propios de cada tipo pueden cambiar sin tocar ningún ruleset. skipped
+  # cuenta como bueno (no aplica a este tipo/evento); failure o cancelled, no.
+  ok:
+    name: ok
+    needs: [resolve, gitflow, security, static-checks, static-deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "resultados: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in success|skipped) ;; *) echo "::error::algún job ha terminado en $r"; exit 1 ;; esac
+          done

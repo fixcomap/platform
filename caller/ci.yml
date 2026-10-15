@@ -1,0 +1,27 @@
+# Pipeline estándar de fixcomap: idéntico en todos los repos, no se edita.
+# Qué se ejecuta lo decide fixcomap/platform según catalog/<repo>.yaml (tipo
+# de proyecto) y la rama. Copia canónica: platform/caller/ci.yml; Renovate
+# actualiza la versión.
+name: ci
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  cicd:
+    # Techo de permisos; cada job de cicd.yml pide solo lo suyo.
+    permissions:
+      contents: write # tag de versión
+      id-token: write # OIDC (GCP, cosign)
+    uses: fixcomap/platform/.github/workflows/cicd.yml@develop
+    secrets: inherit
