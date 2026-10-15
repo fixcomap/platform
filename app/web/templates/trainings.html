@@ -1,9 +1,12 @@
 {{define "content"}}
 {{$t := .Team}}
-<form method="post" action="/t/{{$t.ID}}/trainings" class="row card">
-  <label class="field"><span>Pasar lista del entreno del día</span><input type="date" name="day" value="{{iso .Data.Today}}" required></label>
-  <button>Pasar lista</button>
-</form>
+<details class="add" {{if not .Data.Trainings}}open{{end}}>
+  <summary class="btn">+ Pasar lista</summary>
+  <form method="post" action="/t/{{$t.ID}}/trainings" class="row card">
+    <label class="field"><span>Fecha del entreno</span><input type="date" name="day" value="{{iso .Data.Today}}" required></label>
+    <button>Empezar</button>
+  </form>
+</details>
 {{with .Data.Trainings}}
 <ul class="list">
   {{range .}}

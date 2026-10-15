@@ -1,9 +1,12 @@
 {{define "content"}}
 {{$t := .Team}}
-<form method="post" action="/t/{{$t.ID}}/callups" class="card">
-  {{template "matchFields" .Data.Empty}}
-  <button>Nueva convocatoria</button>
-</form>
+<details class="add" {{if not .Data.Callups}}open{{end}}>
+  <summary class="btn">+ Nueva convocatoria</summary>
+  <form method="post" action="/t/{{$t.ID}}/callups" class="card">
+    {{template "matchFields" .Data.Empty}}
+    <button>Crear convocatoria</button>
+  </form>
+</details>
 {{with .Data.Callups}}
 <ul class="list">
   {{range .}}

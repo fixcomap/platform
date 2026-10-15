@@ -6,6 +6,7 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
@@ -425,6 +426,17 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 			return
 		}
 		p.ID = id
+	}
+	if p.Number.Valid && (p.Active || p.ID == 0) {
+		holder, err := a.st.numberHolder(r.Context(), t.ID, p.ID, p.Number.Int64)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		if holder != "" {
+			http.Error(w, fmt.Sprintf("El dorsal %d ya lo tiene %s.", p.Number.Int64, holder), http.StatusConflict)
+			return
+		}
 	}
 	if err := a.st.savePlayer(r.Context(), t.ID, p); err != nil {
 		a.fail(w, r, err)
