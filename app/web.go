@@ -291,6 +291,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	t("POST /t/{team}/callups/{callup}/edit", a.editCallup)
 	t("POST /t/{team}/callups/{callup}/roles", a.callupRoles)
 	t("POST /t/{team}/callups/{callup}/cards", a.callupCards)
+	t("POST /t/{team}/callups/{callup}/lineup", a.callupLineup)
 	t("POST /t/{team}/callups/{callup}/delete", a.deleteCallup)
 	// Ajustes (entrenadores, plantilla y su layout) solo para admins: un
 	// entrenador usa la app pero no la configura. La imagen sí la leen todos.
@@ -774,7 +775,7 @@ func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
 		"Cycle": cycleInfo{Since: since, FromMatch: fromMatch, Trainings: len(ts)},
 		// La imagen solo se genera con capitán y al menos un portero marcados.
 		"RolesReady": c.Captain.Valid && goalkeepers > 0, "Info": callupInfo(t, c),
-		"SuspendedIn": suspendedIn,
+		"SuspendedIn": suspendedIn, "Formations": formations,
 		// Goles por jugador que superan el marcador: casi siempre un error al cargar.
 		"GoalsMismatch": c.GoalsFor.Valid && int64(scored) > c.GoalsFor.Int64, "Scored": scored}
 	if l, at, err := a.layout(r, t.ID); err == nil {
@@ -784,6 +785,15 @@ func (a *app) callupPage(w http.ResponseWriter, r *http.Request, t Team) {
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		a.fail(w, r, err)
 		return
+	}
+	if f, ok := formationByName(c.Formation); ok {
+		assigned, err := a.st.lineup(r.Context(), c.ID)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		slots, bench := buildLineup(f, in, assigned)
+		data["Lineup"], data["Bench"] = slots, bench
 	}
 	a.render(w, r, "callup", view{Team: &t, Tab: "callups", Title: "Convocatoria " + c.Day.Format("02/01"), Data: data})
 }
@@ -879,6 +889,41 @@ func (a *app) callupRoles(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#imagen"), http.StatusSeeOther)
+}
+
+// callupLineup guarda formación y puestos (slot_0..slot_10 = id de jugador).
+func (a *app) callupLineup(w http.ResponseWriter, r *http.Request, t Team) {
+	id, ok := a.callupID(w, r)
+	if !ok {
+		return
+	}
+	f, ok := formationByName(r.FormValue("formation"))
+	if !ok {
+		http.Error(w, "formación inválida", http.StatusBadRequest)
+		return
+	}
+	slots := map[int]int64{}
+	for i := range f.Slots {
+		v := r.FormValue("slot_" + strconv.Itoa(i))
+		if v == "" {
+			continue
+		}
+		pid, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			http.Error(w, "jugador inválido", http.StatusBadRequest)
+			return
+		}
+		slots[i] = pid
+	}
+	if err := a.st.saveLineup(r.Context(), t.ID, id, f.Name, slots); err != nil {
+		if errors.Is(err, errDuplicatePlayer) {
+			http.Error(w, "Un jugador no puede ocupar dos puestos. Vuelve atrás y corrígelo.", http.StatusConflict)
+			return
+		}
+		a.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, teamURL(t, "/callups/"+strconv.FormatInt(id, 10)+"#planteamiento"), http.StatusSeeOther)
 }
 
 func (a *app) callupCards(w http.ResponseWriter, r *http.Request, t Team) {

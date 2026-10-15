@@ -190,3 +190,18 @@ svg.hex .value { fill: rgba(59,47,143,.35); stroke: var(--accent); stroke-width:
 svg.hex text { font-size: 11px; font-weight: 700; fill: var(--fg); text-anchor: middle; dominant-baseline: middle; }
 .skills-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0 10px; align-items: end; }
 .skills-form button { grid-column: 1 / -1; }
+
+/* Planteamiento: campo vertical, portería propia abajo. */
+.pitch { position: relative; width: 100%; aspect-ratio: 68 / 90; margin: 12px 0; border-radius: 10px; overflow: hidden;
+  background: repeating-linear-gradient(180deg, #2f8a3e 0 10%, #2a7d38 10% 20%); }
+.pitch-lines { position: absolute; inset: 3%; border: 2px solid rgba(255,255,255,.7); }
+.pitch-lines::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 2px solid rgba(255,255,255,.7); }
+.pitch-lines::after { content: ""; position: absolute; left: 50%; top: 50%; width: 22%; aspect-ratio: 1; transform: translate(-50%, -50%);
+  border: 2px solid rgba(255,255,255,.7); border-radius: 50%; }
+.spot { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 2px; width: 80px; }
+.spot .dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 800;
+  background: #fff; color: #1d1a2e; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.spot .who { font-size: 12px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8); text-align: center; line-height: 1.1; }
+ul.slots { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; }
+ul.slots li { display: flex; align-items: center; gap: 6px; }
+ul.slots select { flex: 1; min-width: 0; }

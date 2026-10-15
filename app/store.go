@@ -189,19 +189,20 @@ type Training struct {
 
 // Callup es una convocatoria y, a la vez, el partido.
 type Callup struct {
-	ID       int64
-	Day      time.Time
-	Rival    string
-	Place    string
-	Kickoff  string // "HH:MM" o vacío
-	Meet     string // citación, "HH:MM" o vacío
-	Home     sql.NullBool
-	GoalsFor sql.NullInt64
-	GoalsAg  sql.NullInt64
-	Captain  sql.NullInt64
-	Friendly bool
-	Notes    string
-	Count    int
+	ID        int64
+	Day       time.Time
+	Rival     string
+	Place     string
+	Kickoff   string // "HH:MM" o vacío
+	Meet      string // citación, "HH:MM" o vacío
+	Home      sql.NullBool
+	GoalsFor  sql.NullInt64
+	GoalsAg   sql.NullInt64
+	Captain   sql.NullInt64
+	Friendly  bool
+	Notes     string
+	Formation string // vacío = sin planteamiento
+	Count     int
 }
 
 // Played: hay resultado cargado.
@@ -233,11 +234,12 @@ func (c Callup) Score() string {
 }
 
 const callupCols = `c.id, c.day, c.rival, c.place, COALESCE(c.kickoff, ''), COALESCE(c.meet_time, ''),
-	c.home, c.goals_for, c.goals_against, c.captain_id, c.friendly, c.notes`
+	c.home, c.goals_for, c.goals_against, c.captain_id, c.friendly, c.notes,
+	COALESCE(c.formation, '')`
 
 func scanCallup(sc interface{ Scan(...any) error }, c *Callup, extra ...any) error {
 	return sc.Scan(append([]any{&c.ID, &c.Day, &c.Rival, &c.Place, &c.Kickoff, &c.Meet,
-		&c.Home, &c.GoalsFor, &c.GoalsAg, &c.Captain, &c.Friendly, &c.Notes}, extra...)...)
+		&c.Home, &c.GoalsFor, &c.GoalsAg, &c.Captain, &c.Friendly, &c.Notes, &c.Formation}, extra...)...)
 }
 
 type store struct{ db *sql.DB }

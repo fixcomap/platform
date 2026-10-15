@@ -56,6 +56,41 @@
   <button>Guardar capitán y porteros</button>
 </form>
 
+<h2 id="planteamiento">Planteamiento</h2>
+<p class="sub">Cómo salimos. Queda guardado con el partido; no sale en la imagen.</p>
+<form method="post" action="/t/{{$t.ID}}/callups/{{$c.ID}}/lineup" class="card">
+  <div class="row">
+    <label class="field"><span>Formación</span>
+      <select name="formation">
+        {{if not $c.Formation}}<option value="" selected disabled>Elige formación</option>{{end}}
+        {{range .Data.Formations}}<option value="{{.Name}}" {{if eq .Name $c.Formation}}selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </label>
+  </div>
+  {{with .Data.Lineup}}
+  <div class="pitch" aria-label="Campo con el once">
+    <div class="pitch-lines"></div>
+    {{range .}}<div class="spot" style="left:{{.Slot.X}}%;top:{{.Slot.Y}}%"><span class="dot">{{.Slot.Code}}</span><span class="who">{{with .Player}}{{.DisplayName}}{{else}}—{{end}}</span></div>{{end}}
+  </div>
+  <ul class="slots">
+    {{range .}}{{$ls := .}}
+    <li><span class="pos main">{{.Slot.Code}}</span>
+      <select name="slot_{{.Index}}" aria-label="Jugador en {{.Slot.Code}}">
+        <option value="">—</option>
+        {{with .Suggest}}<optgroup label="Juegan de {{$ls.Slot.Code}}">{{range .}}<option value="{{.ID}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
+        {{with .Others}}<optgroup label="Resto de convocados">{{range .}}<option value="{{.ID}}" {{if eq .ID $ls.Selected}}selected{{end}}>{{.DisplayName}}{{with .PositionList}} ({{index . 0}}){{end}}{{if .Suspension}} (sancionado){{end}}</option>{{end}}</optgroup>{{end}}
+      </select>
+    </li>
+    {{end}}
+  </ul>
+  {{with $.Data.Bench}}<p class="sub">Suplentes: {{range $i, $p := .}}{{if $i}}, {{end}}{{$p.DisplayName}}{{end}}</p>{{end}}
+  <button>Guardar planteamiento</button>
+  <p class="sub">Si cambias la formación, al guardar se vacían los puestos para colocarlos de nuevo.</p>
+  {{else}}
+  <button>Usar formación</button>
+  {{end}}
+</form>
+
 <h2>Imagen</h2>
 {{if not .Data.Layout}}
 <p class="sub">Falta la plantilla de la imagen{{if .User.Admin}}: súbela en <a href="/t/{{$t.ID}}/settings">Ajustes</a>{{else}}; pídesela a un admin{{end}}.</p>
