@@ -447,6 +447,10 @@ func TestFlow(t *testing.T) {
 		t.Fatal("perfil incompleto")
 	}
 
+	// El admin, aun con un solo equipo, tiene acceso a la lista para crear otros.
+	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "Todos los equipos") {
+		t.Fatal("el admin no puede volver a la lista de equipos desde dentro")
+	}
 	// Selector de equipo: el admin ve los dos equipos en la cabecera.
 	if _, err := a.st.createTeam(context.Background(), "Cadete", "coach@test.dev"); err != nil {
 		t.Fatal(err)
@@ -538,6 +542,27 @@ func TestFlow(t *testing.T) {
 	save(`no es json`, 400)
 	do("POST", bd+"/delete", nil, 303)
 
+	// Borrar jugador: desaparece con su historial; baja ≠ borrar.
+	do("POST", base+"/players", url.Values{"first_name": {"Temporal"}, "number": {"77"}}, 303)
+	var tmpID int64
+	for _, p := range mustPlayers(t, a, mustID(t, base)) {
+		if p.FirstName == "Temporal" {
+			tmpID = p.ID
+		}
+	}
+	do("POST", cu+"/add", url.Values{"player": {itoa(tmpID)}}, 303)
+	do("POST", base+"/players/"+itoa(tmpID)+"/delete", nil, 303)
+	do("GET", base+"/players/"+itoa(tmpID), nil, 404)
+	if in, _ := a.st.callupPlayers(context.Background(), mustID(t, cu)); len(in) == 0 {
+		t.Fatal("borrar a un jugador no debe vaciar la convocatoria de los demás")
+	} else {
+		for _, p := range in {
+			if p.ID == tmpID {
+				t.Fatal("el jugador borrado sigue convocado")
+			}
+		}
+	}
+
 	// Otro equipo sin acceso: sin admin no se ve (404).
 	a.auth.devUser = ""
 	a.auth.cfg = Config{SessionKey: strings.Repeat("k", 32)}
@@ -551,6 +576,17 @@ func TestFlow(t *testing.T) {
 	mux.ServeHTTP(rec, r)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("acceso a equipo ajeno: %d", rec.Code)
+	}
+
+	// Entrenador (no admin) con dos equipos: el desplegable muestra solo los
+	// suyos y sin acceso a la lista general ni a crear equipos.
+	r = httptest.NewRequest("GET", base+"/players", nil)
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: signSession([]byte(a.auth.cfg.SessionKey), "coach@test.dev", time.Now().Add(time.Hour))})
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, r)
+	if body := rec.Body.String(); !strings.Contains(body, "team-switch") || !strings.Contains(body, "Cadete") ||
+		strings.Contains(body, ">Otro<") || strings.Contains(body, "Todos los equipos") {
+		t.Fatalf("selector del entrenador: %d", rec.Code)
 	}
 
 	// Entrenador (no admin) de su propio equipo: ni ve ni cambia los ajustes.
@@ -581,6 +617,15 @@ func mustID(t *testing.T, path string) int64 {
 		t.Fatalf("id de %q: %v", path, err)
 	}
 	return id
+}
+
+func mustPlayers(t *testing.T, a *app, teamID int64) []Player {
+	t.Helper()
+	ps, err := a.st.players(context.Background(), teamID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ps
 }
 
 func mustDay(t *testing.T, s string) time.Time {
