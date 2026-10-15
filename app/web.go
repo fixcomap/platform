@@ -445,6 +445,10 @@ func (a *app) playerPage(w http.ResponseWriter, r *http.Request, t Team) {
 			return
 		}
 		pr.Skills = sk
+		if pr.Notes, err = a.st.playerNotes(r.Context(), id); err != nil {
+			a.fail(w, r, err)
+			return
+		}
 	}
 	a.render(w, r, "player", view{Team: &t, Tab: "players", Title: pr.Player.DisplayName(), Data: pr})
 }
@@ -463,14 +467,19 @@ func (a *app) playerEditPage(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	var sk Skills
+	var notes PlayerNotes
 	if currentUser(r.Context()).Admin {
 		if sk, err = a.st.skills(r.Context(), id); err != nil {
 			a.fail(w, r, err)
 			return
 		}
+		if notes, err = a.st.playerNotes(r.Context(), id); err != nil {
+			a.fail(w, r, err)
+			return
+		}
 	}
 	a.render(w, r, "player_edit", view{Team: &t, Tab: "players", Title: "Editar " + p.DisplayName(),
-		Data: map[string]any{"Player": p, "Skills": sk}})
+		Data: map[string]any{"Player": p, "Skills": sk, "Notes": notes}})
 }
 
 // skillsForm lee las cualidades del formulario de edición; se validan antes
@@ -559,6 +568,10 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 			httpError(w, r, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if len(r.PostFormValue("observations")) > 4000 || len(r.PostFormValue("improve")) > 4000 {
+			httpError(w, r, "notas demasiado largas (máx. 4000 caracteres)", http.StatusBadRequest)
+			return
+		}
 	}
 	if err := a.st.savePlayer(r.Context(), t.ID, p); err != nil {
 		a.fail(w, r, err)
@@ -566,6 +579,12 @@ func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {
 	}
 	if withSkills {
 		if err := a.st.saveSkills(r.Context(), t.ID, p.ID, sk); err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		notes := PlayerNotes{Observations: strings.TrimSpace(r.PostFormValue("observations")),
+			Improve: strings.TrimSpace(r.PostFormValue("improve"))}
+		if err := a.st.savePlayerNotes(r.Context(), t.ID, p.ID, notes); err != nil {
 			a.fail(w, r, err)
 			return
 		}

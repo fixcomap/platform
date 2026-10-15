@@ -427,11 +427,16 @@ func TestFlow(t *testing.T) {
 	do("POST", base+"/players/"+itoa(ps[0].ID), edit, 400) // nota fuera de rango: no se guarda nada
 	edit.Set("passing", "9")
 	edit.Set("defending", "6")
+	edit.Set("observations", "Buen compañero")
+	edit.Set("improve", "Perfil izquierdo")
 	if loc := do("POST", base+"/players/"+itoa(ps[0].ID), edit, 303).Header().Get("Location"); !strings.HasSuffix(loc, "/players/"+itoa(ps[0].ID)) {
 		t.Fatalf("tras editar debe volver al perfil: %q", loc)
 	}
 	if sk, _ := a.st.skills(context.Background(), ps[0].ID); sk["pace"] != 7.5 || sk.Overall() != 7.5 || len(sk) != 3 {
 		t.Fatalf("cualidades: %v overall=%v", sk, sk.Overall())
+	}
+	if body := do("GET", base+"/players/"+itoa(ps[0].ID), nil, 200).Body.String(); !strings.Contains(body, "Perfil izquierdo") {
+		t.Fatal("el perfil no muestra las notas al admin")
 	}
 	if body := do("GET", base+"/players/"+itoa(ps[0].ID), nil, 200).Body.String(); !strings.Contains(body, `class="rating"`) || !strings.Contains(body, "7,5") {
 		t.Fatal("el perfil no muestra las cualidades al admin")
