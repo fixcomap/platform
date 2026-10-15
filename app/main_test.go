@@ -447,6 +447,10 @@ func TestFlow(t *testing.T) {
 		t.Fatal("perfil incompleto")
 	}
 
+	// El admin, aun con un solo equipo, tiene acceso a la lista para crear otros.
+	if body := do("GET", base+"/players", nil, 200).Body.String(); !strings.Contains(body, "Todos los equipos") {
+		t.Fatal("el admin no puede volver a la lista de equipos desde dentro")
+	}
 	// Selector de equipo: el admin ve los dos equipos en la cabecera.
 	if _, err := a.st.createTeam(context.Background(), "Cadete", "coach@test.dev"); err != nil {
 		t.Fatal(err)
@@ -572,6 +576,17 @@ func TestFlow(t *testing.T) {
 	mux.ServeHTTP(rec, r)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("acceso a equipo ajeno: %d", rec.Code)
+	}
+
+	// Entrenador (no admin) con dos equipos: el desplegable muestra solo los
+	// suyos y sin acceso a la lista general ni a crear equipos.
+	r = httptest.NewRequest("GET", base+"/players", nil)
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: signSession([]byte(a.auth.cfg.SessionKey), "coach@test.dev", time.Now().Add(time.Hour))})
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, r)
+	if body := rec.Body.String(); !strings.Contains(body, "team-switch") || !strings.Contains(body, "Cadete") ||
+		strings.Contains(body, ">Otro<") || strings.Contains(body, "Todos los equipos") {
+		t.Fatalf("selector del entrenador: %d", rec.Code)
 	}
 
 	// Entrenador (no admin) de su propio equipo: ni ve ni cambia los ajustes.

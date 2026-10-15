@@ -277,5 +277,7 @@ li.pick.blocked label { cursor: not-allowed; opacity: .6; }
 #notas .sub { margin: 10px 0 2px; }
 #notas .notes { margin: 0; }
 .notes.improve { border-left: 3px solid var(--warn); padding-left: 8px; }
+.team-switch li.all { border-top: 1px solid var(--line); margin-top: 4px; }
+.team-switch li.all a { color: var(--accent); font-weight: 600; }
 .danger-zone { margin-top: 32px; border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
 .danger-zone h3 { margin: 0 0 4px; font-size: 16px; color: var(--bad); }

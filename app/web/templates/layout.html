@@ -12,11 +12,12 @@
 <body>
 {{if .User.Email}}
 <header>
-  {{if gt (len .Teams) 1}}
+  {{if and .Team (or .User.Admin (gt (len .Teams) 1))}}
   {{/* Enlaces y no <select> + JS: sin navegación construida en el cliente. */}}
   <details class="team-switch">
     <summary>{{.Team.Name}} ▾</summary>
-    <ul>{{range .Teams}}{{if ne .ID $.Team.ID}}<li><a href="/t/{{.ID}}/{{if $.Tab}}{{$.Tab}}{{else}}trainings{{end}}">{{.Name}}</a></li>{{end}}{{end}}</ul>
+    <ul>{{range .Teams}}{{if ne .ID $.Team.ID}}<li><a href="/t/{{.ID}}/{{if $.Tab}}{{$.Tab}}{{else}}trainings{{end}}">{{.Name}}</a></li>{{end}}{{end}}
+      {{if .User.Admin}}<li class="all"><a href="/">Todos los equipos · + Nuevo equipo</a></li>{{end}}</ul>
   </details>
   {{else}}
   <h1>{{with .Team}}{{.Name}}{{else}}Equipos{{end}}</h1>
