@@ -1,12 +1,60 @@
 {{define "content"}}
-{{$p := .Data}}
-<form method="post" class="card">
-  <label class="field"><span>Nombre *</span><input type="text" name="first_name" value="{{$p.FirstName}}" required></label>
-  <label class="field"><span>Apellido</span><input type="text" name="last_name" value="{{$p.LastName}}"></label>
-  <label class="field"><span>Apodo (sale en la convocatoria)</span><input type="text" name="nickname" value="{{$p.Nickname}}"></label>
-  <label class="field"><span>Dorsal</span><input type="number" name="number" min="0" max="999" inputmode="numeric" value="{{if $p.Number.Valid}}{{$p.Number.Int64}}{{end}}"></label>
-  <label class="field check"><input type="checkbox" name="active" value="1" {{if $p.Active}}checked{{end}}> En el equipo (desmarcar = baja; se conserva su historial)</label>
-  <button>Guardar</button>
-  <a href="/t/{{.Team.ID}}/players">Cancelar</a>
-</form>
+{{$pr := .Data}}{{$p := $pr.Player}}
+<div class="profile-head">
+  <span class="profile-num">{{if $p.Number.Valid}}{{$p.Number.Int64}}{{end}}</span>
+  <div>
+    <h2>{{$p.DisplayName}}</h2>
+    <p class="sub">{{$p.FirstName}} {{$p.LastName}}{{if not $p.Active}} · baja{{end}}</p>
+  </div>
+</div>
+<p>{{template "discipline" $p}}</p>
+<p class="sub">Temporada desde el {{date $pr.Since}}. Partidos: solo oficiales.</p>
+
+<div class="tiles">
+  <div class="tile"><b>{{$pr.AttendancePct}}%</b><span>asistencia<br><small>{{$pr.Came}} de {{$pr.Sessions}} entrenos</small></span></div>
+  <div class="tile"><b>{{$pr.CalledUp}}</b><span>convocatorias<br><small>de {{$pr.Official}} partidos</small></span></div>
+  <div class="tile"><b>{{$pr.Goals}}</b><span>goles</span></div>
+  <div class="tile"><b><span class="card-y"></span> {{$pr.YellowTotal}}{{if $pr.Reds}} <span class="card-r"></span> {{$pr.Reds}}{{end}}</b><span>tarjetas<br><small>{{$p.CycleYellows}} en el ciclo de 5</small></span></div>
+</div>
+
+<h2>Entrenos</h2>
+{{if $pr.Sessions}}
+<ul class="breakdown">
+  {{range statuses}}<li class="{{.}}"><span class="chip {{.}}">{{symbol .}}</span> {{statusLabel .}} <b>{{index $pr.ByStatus .}}</b></li>{{end}}
+</ul>
+<p class="sub">Últimos entrenos:</p>
+{{template "cycle" $pr.Recent}}
+{{else}}
+<p class="empty">Sin entrenos con lista esta temporada.</p>
+{{end}}
+
+<h2>Partidos</h2>
+{{if $pr.Matches}}
+<ul class="list">
+  {{range $pr.Matches}}
+  <li>
+    <a class="grow" href="/t/{{$.Team.ID}}/callups/{{.ID}}">
+      {{weekday .Day}} {{date .Day}}{{with .Rival}} · vs {{.}}{{end}}{{if .Friendly}} <span class="sub">(amistoso)</span>{{end}}
+      <div class="sub">{{if .IsCaptain}}<span class="badge">C</span>{{end}}{{if .Goalkeeper}}<span class="badge">P</span>{{end}}{{if .Goals}} ⚽{{if gt .Goals 1}}×{{.Goals}}{{end}}{{end}}{{if .Yellow}} <span class="card-y">{{if gt .Yellow 1}}2{{end}}</span>{{end}}{{if .Red}} <span class="card-r"></span>{{end}}</div>
+    </a>
+    {{if .Played}}<span class="pill result {{.Outcome}}">{{.Score}}</span>{{end}}
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="empty">Sin convocatorias esta temporada.</p>
+{{end}}
+
+<details class="card" style="margin-top:24px">
+  <summary>Editar datos del jugador</summary>
+  <form method="post" style="margin-top:12px">
+    <label class="field"><span>Nombre *</span><input type="text" name="first_name" value="{{$p.FirstName}}" required></label>
+    <label class="field"><span>Apellido</span><input type="text" name="last_name" value="{{$p.LastName}}"></label>
+    <label class="field"><span>Apodo (sale en la convocatoria)</span><input type="text" name="nickname" value="{{$p.Nickname}}"></label>
+    <label class="field"><span>Dorsal</span><input type="number" name="number" min="0" max="999" inputmode="numeric" value="{{if $p.Number.Valid}}{{$p.Number.Int64}}{{end}}"></label>
+    <label class="field check-inline"><input type="checkbox" name="active" value="1" {{if $p.Active}}checked{{end}}> En el equipo (desmarcar = baja; se conserva su historial)</label>
+    <button>Guardar</button>
+  </form>
+</details>
+<p><a href="/t/{{.Team.ID}}/players">← Jugadores</a></p>
 {{end}}

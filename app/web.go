@@ -57,6 +57,7 @@ var funcs = template.FuncMap{
 	},
 	"lateAlert":  func() int { return lateAlert },
 	"mod":        func(a, b int) int { return a % b },
+	"add":        func(a, b int) int { return a + b },
 	"lateWindow": func() int { return lateWindow },
 }
 
@@ -133,6 +134,7 @@ func parsePages() (map[string]*template.Template, error) {
 type view struct {
 	User  user
 	Team  *Team
+	Teams []Team // equipos del usuario, para el selector de la cabecera
 	Tab   string
 	Title string
 	Data  any
@@ -142,6 +144,15 @@ type view struct {
 // devuelve 500 limpio en lugar de media página.
 func (a *app) render(w http.ResponseWriter, r *http.Request, page string, v view) {
 	v.User = currentUser(r.Context())
+	// Con más de un equipo, la cabecera permite saltar de uno a otro.
+	if v.Team != nil {
+		ts, err := a.st.teams(r.Context(), v.User.Email, v.User.Admin)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		v.Teams = ts
+	}
 	var buf bytes.Buffer
 	if err := a.pages[page].Execute(&buf, v); err != nil {
 		a.fail(w, r, err)
@@ -364,12 +375,28 @@ func (a *app) playerPage(w http.ResponseWriter, r *http.Request, t Team) {
 		http.NotFound(w, r)
 		return
 	}
-	p, err := a.st.player(r.Context(), t.ID, id)
+	now := time.Now().In(madrid)
+	pr, err := a.st.profile(r.Context(), t.ID, id, now)
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
-	a.render(w, r, "player", view{Team: &t, Tab: "players", Title: p.DisplayName(), Data: p})
+	// Avisos: los mismos que en la lista, calculados para este jugador.
+	disc, err := a.st.discipline(r.Context(), t.ID, now)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	streak, late, err := a.st.attendanceAlerts(r.Context(), t.ID)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	pr.Player.Suspension = disc.Next[id]
+	pr.Player.CycleYellows = disc.Yellows[id]
+	pr.Player.Streak = streak[id]
+	pr.Player.Late = late[id]
+	a.render(w, r, "player", view{Team: &t, Tab: "players", Title: pr.Player.DisplayName(), Data: pr})
 }
 
 func (a *app) savePlayer(w http.ResponseWriter, r *http.Request, t Team) {

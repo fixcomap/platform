@@ -138,3 +138,23 @@ button:disabled { opacity: .5; cursor: default; }
 ul.booked { list-style: none; margin: 10px 0 0; padding: 0; }
 ul.booked li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 ul.booked li:last-child { border-bottom: 0; }
+
+/* Perfil del jugador */
+.profile-head { display: flex; align-items: center; gap: 14px; margin-top: 8px; }
+.profile-head h2 { margin: 0; font-size: 22px; }
+.profile-head .sub { margin: 2px 0 0; }
+.profile-num { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; font-size: 22px; font-weight: 800;
+  background: var(--accent); color: var(--accent-fg); flex-shrink: 0; }
+.tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 12px 0; }
+.tile { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+.tile b { font-size: 26px; line-height: 1.1; display: flex; align-items: center; gap: 4px; }
+.tile span { color: var(--muted); font-size: 14px; }
+ul.breakdown { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+ul.breakdown li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
+ul.breakdown li b { margin-left: auto; }
+.team-switch { position: relative; max-width: 70%; }
+.team-switch summary { font-size: 18px; font-weight: 700; cursor: pointer; list-style: none; }
+.team-switch summary::-webkit-details-marker { display: none; }
+.team-switch ul { position: absolute; z-index: 2; left: 0; top: 100%; margin: 6px 0 0; padding: 6px 0; list-style: none; min-width: 200px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.15); }
+.team-switch li a { display: block; padding: 10px 14px; text-decoration: none; color: var(--fg); }
