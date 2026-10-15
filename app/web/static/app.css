@@ -225,3 +225,25 @@ ul.slots select { flex: 1; min-width: 0; }
 .ppos-star span::before { content: "☆"; }
 .ppos-star input:checked + span { color: #f5b70a; }
 .ppos-star input:checked + span::before { content: "★"; }
+
+/* Pizarra: mismo estilo minimalista que los campos, a todo el ancho. */
+.board { --pline: color-mix(in srgb, var(--accent) 55%, transparent);
+  display: block; width: 100%; max-width: 560px; margin: 8px auto; touch-action: none; user-select: none; }
+.bp-lines * { fill: none; stroke: var(--pline); stroke-width: .3; }
+.bp-lines .bp-grass { fill: color-mix(in srgb, var(--accent) 7%, transparent); }
+.bp-lines .bp-spot { fill: var(--pline); stroke: none; }
+.bp-lines .bp-goal { stroke-width: .3; }
+.bp-token { cursor: grab; }
+.bp-token circle { fill: var(--accent); stroke: var(--card); stroke-width: .4; }
+.bp-label { fill: var(--accent-fg); font-size: 2.3px; font-weight: 800; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.bp-name { fill: var(--fg); font-size: 2.3px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.bp-ball { cursor: grab; }
+.bp-ball circle { fill: #fff; stroke: #1d1a2e; stroke-width: .35; }
+.bp-arrow { stroke: var(--fg); stroke-width: .45; stroke-dasharray: 1.4 .9; }
+.bp-head { fill: var(--fg); }
+.board[data-mode="arrow"] { cursor: crosshair; }
+.board[data-mode="remove"] .bp-token, .board[data-mode="remove"] .bp-arrow { cursor: not-allowed; }
+.board-head { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.board-head input { flex: 1; }
+.board-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+.board-tools button.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }

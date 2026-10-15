@@ -295,6 +295,11 @@ func (a *app) routes(mux *http.ServeMux) {
 	t("POST /t/{team}/callups/{callup}/delete", a.deleteCallup)
 	// Ajustes (entrenadores, plantilla y su layout) solo para admins: un
 	// entrenador usa la app pero no la configura. La imagen sí la leen todos.
+	t("GET /t/{team}/boards", a.boardsPage)
+	t("POST /t/{team}/boards", a.createBoard)
+	t("GET /t/{team}/boards/{board}", a.boardPage)
+	t("POST /t/{team}/boards/{board}", a.saveBoard)
+	t("POST /t/{team}/boards/{board}/delete", a.deleteBoard)
 	t("GET /t/{team}/settings", adminOnly(a.settingsPage))
 	t("POST /t/{team}/coaches", adminOnly(a.addCoach))
 	t("POST /t/{team}/coaches/remove", adminOnly(a.removeCoach))
@@ -1069,6 +1074,152 @@ func (a *app) deleteCallup(w http.ResponseWriter, r *http.Request, t Team) {
 		return
 	}
 	http.Redirect(w, r, teamURL(t, "/callups"), http.StatusSeeOther)
+}
+
+func (a *app) boardsPage(w http.ResponseWriter, r *http.Request, t Team) {
+	bs, err := a.st.boards(r.Context(), t.ID)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	cs, err := a.st.callups(r.Context(), t.ID)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	// Solo convocatorias con planteamiento sirven de punto de partida.
+	var withLineup []Callup
+	for _, c := range cs {
+		if c.Formation != "" {
+			withLineup = append(withLineup, c)
+		}
+	}
+	a.render(w, r, "boards", view{Team: &t, Tab: "boards", Title: "Pizarra", Data: map[string]any{
+		"Boards": bs, "Formations": formations, "Callups": withLineup,
+	}})
+}
+
+// createBoard parte de una formación ("f:4-4-2") o del planteamiento de una
+// convocatoria ("c:<id>"), con los nombres de los jugadores colocados.
+func (a *app) createBoard(w http.ResponseWriter, r *http.Request, t Team) {
+	name := cut(strings.TrimSpace(r.FormValue("name")))
+	if name == "" {
+		http.Error(w, "la pizarra necesita un nombre", http.StatusBadRequest)
+		return
+	}
+	var st BoardState
+	origin := r.FormValue("origin")
+	switch {
+	case strings.HasPrefix(origin, "f:"):
+		f, ok := formationByName(origin[2:])
+		if !ok {
+			http.Error(w, "formación inválida", http.StatusBadRequest)
+			return
+		}
+		st = stateFromFormation(f, nil)
+	case strings.HasPrefix(origin, "c:"):
+		cid, err := strconv.ParseInt(origin[2:], 10, 64)
+		if err != nil {
+			http.Error(w, "convocatoria inválida", http.StatusBadRequest)
+			return
+		}
+		c, err := a.st.callup(r.Context(), t.ID, cid)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		f, ok := formationByName(c.Formation)
+		if !ok {
+			http.Error(w, "esa convocatoria no tiene planteamiento", http.StatusBadRequest)
+			return
+		}
+		assigned, err := a.st.lineup(r.Context(), cid)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		in, err := a.st.callupPlayers(r.Context(), cid)
+		if err != nil {
+			a.fail(w, r, err)
+			return
+		}
+		byID := map[int64]Player{}
+		for _, p := range in {
+			byID[p.ID] = p
+		}
+		names := map[int]string{}
+		for slot, pid := range assigned {
+			names[slot] = byID[pid].DisplayName()
+		}
+		st = stateFromFormation(f, names)
+	default:
+		st = BoardState{Ball: BoardPoint{pitchW / 2, pitchL / 2}}
+		_ = st.sanitize()
+	}
+	id, err := a.st.createBoard(r.Context(), t.ID, name, st)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, teamURL(t, "/boards/"+strconv.FormatInt(id, 10)), http.StatusSeeOther)
+}
+
+func (a *app) boardPage(w http.ResponseWriter, r *http.Request, t Team) {
+	id, err := pathID(r, "board")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	b, err := a.st.board(r.Context(), t.ID, id)
+	if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	a.render(w, r, "board", view{Team: &t, Tab: "boards", Title: b.Name, Data: b})
+}
+
+// saveBoard recibe JSON desde board.js ({name, state}); responde 204.
+func (a *app) saveBoard(w http.ResponseWriter, r *http.Request, t Team) {
+	id, err := pathID(r, "board")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	var in struct {
+		Name  string     `json:"name"`
+		State BoardState `json:"state"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&in); err != nil {
+		http.Error(w, "pizarra inválida", http.StatusBadRequest)
+		return
+	}
+	in.Name = cut(strings.TrimSpace(in.Name))
+	if in.Name == "" {
+		http.Error(w, "la pizarra necesita un nombre", http.StatusBadRequest)
+		return
+	}
+	if err := in.State.sanitize(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.st.saveBoard(r.Context(), t.ID, id, in.Name, in.State); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *app) deleteBoard(w http.ResponseWriter, r *http.Request, t Team) {
+	id, err := pathID(r, "board")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := a.st.deleteBoard(r.Context(), t.ID, id); err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	http.Redirect(w, r, teamURL(t, "/boards"), http.StatusSeeOther)
 }
 
 func (a *app) settingsPage(w http.ResponseWriter, r *http.Request, t Team) {
