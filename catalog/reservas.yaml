@@ -1,0 +1,15 @@
+# Reservas online para clubes de pádel (React + Node/Express, un solo contenedor).
+repo: fixcomap/reservas
+type: webapp
+webapp:
+  service: reservas
+  runtime: node
+  node_version: "22"
+  # false hasta que el primer deploy haya creado los servicios (alta en dos releases).
+  public: false
+  monitoring: true
+  production:
+    hostnames: [reservas.fixcomap.com]
+  development:
+    hostnames: [reservas.dev.fixcomap.com]
+    db_name: reservas_dev

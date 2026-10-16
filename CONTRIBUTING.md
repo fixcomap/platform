@@ -125,8 +125,13 @@ Para `webapp`, además (dos releases, porque invoker y domain mappings exigen el
    se prueban con `curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" <url>`).
 4. `public: true` y release: `run.invoker` público y domain mappings.
 
-Contrato de la app: escucha en 8080, `/health` responde 200, lee `APP_CONFIG` (JSON),
-`DATABASE_URL_FILE`, `DB_NAME` (opcional) y `APP_BASE_URL` (primer hostname del entorno).
+Contrato de la app: un único contenedor (`Dockerfile` en la raíz) que escucha en `$PORT` (8080),
+`/health` responde 200 sin tocar la base de datos, y lee `APP_CONFIG` (JSON), `DATABASE_URL_FILE`,
+`DB_NAME` (opcional) y `APP_BASE_URL` (primer hostname del entorno).
+
+Checks por `runtime` del catálogo: `go` (gofmt, vet, golangci-lint, `go test -race`); `node` (en cada
+directorio con `package-lock.json`: `npm ci` y los scripts `lint`, `test` y `build` que existan;
+versión en `webapp.node_version`, por defecto 22).
 
 Los callers fijan una versión (`cicd.yml@vX.Y.Z`): un cambio aquí llega a cada proyecto cuando sube
 su versión. Para probar antes, un caller puede apuntar temporalmente a `@feature/<rama>`; el catálogo

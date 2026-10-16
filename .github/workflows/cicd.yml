@@ -116,6 +116,7 @@ jobs:
             if [ "$type" = webapp ]; then
               echo "base_service=$(yq -r '.webapp.service' "$f")"
               echo "runtime=$(yq -r '.webapp.runtime // "go"' "$f")"
+              echo "node_version=$(yq -r '.webapp.node_version // "22"' "$f")"
               echo "public=$(yq -r '.webapp.public == true' "$f")"
             fi
           } >> "$GITHUB_OUTPUT"
@@ -337,7 +338,8 @@ jobs:
   # ---------- webapp: Cloud Run ----------
 
   webapp-checks:
-    name: webapp (${{ needs.resolve.outputs.runtime }})
+    # Nombres fijos: con el job saltado, GitHub muestra la expresión sin evaluar.
+    name: webapp (checks)
     needs: resolve
     if: needs.resolve.outputs.type == 'webapp'
     runs-on: ubuntu-latest
@@ -352,7 +354,7 @@ jobs:
         env:
           RUNTIME: ${{ needs.resolve.outputs.runtime }}
         run: |
-          case "$RUNTIME" in go) ;; *) echo "::error::runtime '$RUNTIME' sin checks en cicd.yml"; exit 1 ;; esac
+          case "$RUNTIME" in go|node) ;; *) echo "::error::runtime '$RUNTIME' sin checks en cicd.yml"; exit 1 ;; esac
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: needs.resolve.outputs.runtime == 'go'
@@ -369,6 +371,23 @@ jobs:
       - name: go test
         if: needs.resolve.outputs.runtime == 'go'
         run: go test -race ./...
+
+      # node: cada paquete con package-lock.json (monorepo o no) pasa por npm ci y
+      # por los scripts lint, test y build que defina; los que no define, se saltan.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.resolve.outputs.runtime == 'node'
+        with:
+          node-version: ${{ needs.resolve.outputs.node_version }}
+      - name: npm ci + lint + test + build
+        if: needs.resolve.outputs.runtime == 'node'
+        run: |
+          mapfile -t dirs < <(git ls-files '*package-lock.json' 'package-lock.json' | xargs -rn1 dirname | sort -u)
+          [ "${#dirs[@]}" -gt 0 ] || { echo "::error::runtime node sin ningún package-lock.json"; exit 1; }
+          for d in "${dirs[@]}"; do
+            echo "::group::$d"
+            (cd "$d" && npm ci --no-audit --no-fund && npm run --if-present lint && npm test --if-present && npm run --if-present build)
+            echo "::endgroup::"
+          done
 
   webapp-image:
     name: webapp (imagen)
@@ -439,7 +458,7 @@ jobs:
         run: cosign sign --yes "$DIGEST"
 
   webapp-deploy:
-    name: webapp (${{ needs.resolve.outputs.service }})
+    name: webapp (deploy)
     needs: [resolve, gitflow, security, webapp-checks, webapp-image]
     if: >-
       !cancelled() && needs.resolve.outputs.type == 'webapp' && needs.resolve.outputs.deploy == 'true'
