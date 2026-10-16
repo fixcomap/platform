@@ -128,7 +128,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then
             echo "changed=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -q '^infra/dns/'; then
+          if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qE '^(infra/dns|catalog)/'; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"

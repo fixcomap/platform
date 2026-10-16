@@ -1,0 +1,8 @@
+# Portfolio de Elías Prieto (React + Vite).
+repo: fixcomap/elias
+type: static
+static:
+  pages_project: fixcomap-elias
+  site_dir: dist
+  build_cmd: npm run build
+  hostnames: [elias.fixcomap.com]
