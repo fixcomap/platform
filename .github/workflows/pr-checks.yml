@@ -62,13 +62,24 @@ jobs:
                 [ "$(yq -r '.static.pages_project // ""' "$f")" != "" ] || fail "$f" "falta static.pages_project"
                 [ "$(yq -r '.static.hostnames | length' "$f")" -gt 0 ] || fail "$f" "falta static.hostnames"
                 ;;
-              *) fail "$f" "type desconocido (static)" ;;
+              webapp)
+                svc=$(yq -r '.webapp.service // ""' "$f")
+                # <service>-runtime es una SA: 6-30 caracteres.
+                echo "$svc" | grep -Eq '^[a-z][a-z0-9-]{2,21}$' || fail "$f" "webapp.service: [a-z][a-z0-9-], 3-22 caracteres"
+                for e in production development; do
+                  [ "$(yq -r ".webapp.$e.hostnames | length" "$f")" -gt 0 ] || fail "$f" "falta webapp.$e.hostnames"
+                done
+                case "$(yq -r '.webapp.runtime // "go"' "$f")" in go) ;; *) fail "$f" "webapp.runtime desconocido (go)" ;; esac
+                ;;
+              *) fail "$f" "type desconocido (static, webapp)" ;;
             esac
           done
-          dup=$(yq -N -r '.static.hostnames[]?' catalog/*.yaml | sort | uniq -d)
+          dup=$(yq -N -r '(.static.hostnames[]?), (.webapp.production.hostnames[]?), (.webapp.development.hostnames[]?)' catalog/*.yaml | sort | uniq -d)
           [ -z "$dup" ] || fail catalog "hostnames repetidos: $dup"
           dup=$(yq -N -r '.static.pages_project | select(. != null)' catalog/*.yaml | sort | uniq -d)
           [ -z "$dup" ] || fail catalog "pages_project repetidos: $dup"
+          dup=$(yq -N -r '.webapp.service | select(. != null)' catalog/*.yaml | sort | uniq -d)
+          [ -z "$dup" ] || fail catalog "webapp.service repetidos: $dup"
           exit "$err"
 
   app:
@@ -142,6 +153,8 @@ jobs:
           - { layer: bootstrap, plan: true, bucket: fixcomap-core-tfstate }
           - { layer: platform, plan: true, bucket: fixcomap-core-tfstate }
           - { layer: app, plan: true, bucket: fixcomap-core-tfstate-app }
+          # webapp: un estado por servicio; se planifica en el pipeline de cada repo.
+          - { layer: webapp, plan: false, bucket: fixcomap-core-tfstate-app }
           - { layer: dns, plan: false, bucket: fixcomap-core-tfstate }
           - { layer: observability, plan: false, bucket: fixcomap-core-tfstate }
     defaults:
