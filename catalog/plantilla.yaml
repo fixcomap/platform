@@ -1,0 +1,16 @@
+# Asistencia y convocatorias para entrenadores (Go).
+repo: fixcomap/plantilla
+type: webapp
+webapp:
+  service: plantilla
+  runtime: go
+  # false hasta que el primer deploy haya creado los servicios: run.invoker
+  # público y domain mappings necesitan que existan (alta en dos releases).
+  public: false
+  monitoring: true
+  production:
+    # El primero es el canónico (APP_BASE_URL); el resto redirigen (301) a él.
+    hostnames: [plantilla.fixcomap.com, app.fixcomap.com]
+  development:
+    hostnames: [plantilla.dev.fixcomap.com, dev.fixcomap.com]
+    db_name: app_dev

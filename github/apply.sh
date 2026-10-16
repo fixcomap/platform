@@ -5,10 +5,11 @@
 #   rulesets/main-reviews.json         1 aprobación en main; bypass solo para admin
 #                                      (se salta reviewers, nunca checks)
 #   checks/<repo>.json                 checks obligatorios (default.json: "cicd / ok")
-#   environment preview                sin aprobación ni restricción de rama (previews de PR)
+#   environment preview | development  sin aprobación ni restricción de rama (static | webapp)
+#   environment production             solo si falta: aprobación del admin, ramas protegidas
 #
-# Idempotente: crea o actualiza cada ruleset por nombre. No toca el environment
-# production (reviewers y rama protegida son decisión de cada repo).
+# Idempotente: crea o actualiza cada ruleset por nombre. Un production que ya
+# existe no se toca (sus reviewers son decisión de cada repo).
 # Lo ejecuta un admin de la org a mano; CI no tiene permisos para esto.
 #
 #   github/apply.sh elias agustin web platform
@@ -49,9 +50,23 @@ for repo in "$@"; do
     fi
   done
 
-  # platform no tiene previews: su único environment es "platform".
-  if [ "$repo" != platform ]; then
-    write PUT "repos/$ORG/$repo/environments/preview" '{"wait_timer": 0, "reviewers": [], "deployment_branch_policy": null}'
-    echo "$repo: environment preview abierto"
+  # platform no tiene previews ni producción propia: su único environment es "platform".
+  [ "$repo" != platform ] || continue
+
+  # Entorno sin protección según el tipo del catálogo: previews de Pages (static)
+  # o el servicio <service>-dev (webapp).
+  open_env=preview
+  grep -q '^type: webapp' "$DIR/../catalog/$repo.yaml" 2>/dev/null && open_env=development
+  write PUT "repos/$ORG/$repo/environments/$open_env" '{"wait_timer": 0, "reviewers": [], "deployment_branch_policy": null}'
+  echo "$repo: environment $open_env abierto"
+
+  # production solo se crea si falta (sus reviewers son decisión de cada repo).
+  # Sin esto, el primer deploy a main lo crearía GitHub sin aprobación.
+  if gh api "repos/$ORG/$repo/environments/production" >/dev/null 2>&1; then
+    echo "$repo: environment production ya existe, no se toca"
+  else
+    me=$(gh api user --jq .id)
+    write PUT "repos/$ORG/$repo/environments/production" "{\"wait_timer\": 0, \"reviewers\": [{\"type\": \"User\", \"id\": $me}], \"deployment_branch_policy\": {\"protected_branches\": true, \"custom_branch_policies\": false}}"
+    echo "$repo: environment production creado (aprobación del admin, solo ramas protegidas)"
   fi
 done
