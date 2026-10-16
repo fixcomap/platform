@@ -23,5 +23,5 @@ jobs:
     permissions:
       contents: write # tag de versión
       id-token: write # OIDC (GCP, cosign)
-    uses: fixcomap/platform/.github/workflows/cicd.yml@v0.17.0
+    uses: fixcomap/platform/.github/workflows/cicd.yml@v0.18.0
     secrets: inherit

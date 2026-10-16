@@ -128,8 +128,11 @@ jobs:
           BASE_SERVICE: ${{ steps.catalog.outputs.base_service }}
           FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
-          main=false; [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" = main ] && main=true
-          develop=false; [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" = develop ] && develop=true
+          # Un dispatch sobre main o develop es un redespliegue: mismo camino (y
+          # misma aprobación) que el push. Sobre otra rama, como una PR.
+          ev=false; case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ev=true ;; esac
+          main=false; [ "$ev" = true ] && [ "$GITHUB_REF_NAME" = main ] && main=true
+          develop=false; [ "$ev" = true ] && [ "$GITHUB_REF_NAME" = develop ] && develop=true
           deploy=true; [ "$FORK" = true ] && deploy=false
           case "$TYPE" in
             static)
@@ -251,7 +254,8 @@ jobs:
           done < <(grep -rHoE '(src|href)="/[^"/][^"]*"' --include='*.html' "$SITE_DIR" | sed -E 's/:(src|href)="/:/; s/"$//')
 
   static-deploy:
-    name: static (pages ${{ needs.resolve.outputs.environment }})
+    # Nombre fijo: con el job saltado, GitHub muestra la expresión sin evaluar.
+    name: static (pages)
     needs: [resolve, gitflow, security, static-checks]
     # gitflow solo corre en PR: skipped cuenta como bueno.
     if: >-
