@@ -69,7 +69,7 @@ jobs:
                 for e in production development; do
                   [ "$(yq -r ".webapp.$e.hostnames | length" "$f")" -gt 0 ] || fail "$f" "falta webapp.$e.hostnames"
                 done
-                case "$(yq -r '.webapp.runtime // "go"' "$f")" in go) ;; *) fail "$f" "webapp.runtime desconocido (go)" ;; esac
+                case "$(yq -r '.webapp.runtime // "go"' "$f")" in go|node) ;; *) fail "$f" "webapp.runtime desconocido (go, node)" ;; esac
                 ;;
               *) fail "$f" "type desconocido (static, webapp)" ;;
             esac
