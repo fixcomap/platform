@@ -91,46 +91,32 @@ aplicado, no solo lo que tocó ese merge). Tres jobs en secuencia:
   versiones de `tofu`/`tflint`/`gitleaks`/`wrangler`, Go e imagen base. Los major de providers se hacen a
   mano con la guía de upgrade delante.
 
-## Pipelines de los sitios estáticos (`rw-*.yml`)
+## Pipeline estándar de los proyectos (`cicd.yml`)
 
-Los repos de sitios estáticos de la org (`fixcomap/web`, portfolios) no tienen pipeline propio: llaman
-a dos *reusable workflows* de este repo con un `ci.yml` de pocas líneas. La lógica, los pines y Renovate
-viven aquí una sola vez; cambiar el pipeline es una PR aquí, no una por repo.
+Los repos de proyecto no tienen pipeline propio: todos llevan el mismo `.github/workflows/ci.yml`
+(copia canónica en `caller/ci.yml`, solo cambia la versión) que llama a `cicd.yml` de este repo.
+Qué se ejecuta lo decide `catalog/<repo>.yaml`: tipo de proyecto y su configuración. Un repo sin
+entrada en el catálogo no hace nada.
 
-- `rw-static-checks.yml`: gitflow (solo en PR), gitleaks + trivy, build opcional, W3C Nu, stylelint si
-  el repo lo define, CSP en `_headers`, aviso por assets locales que faltan.
-- `rw-pages-deploy.yml`: `wrangler pages deploy` al proyecto indicado. **El mismo job corre en PR
-  (preview `<rama>.<proyecto>.pages.dev`), en `develop` (preview) y en `main` (producción)**, y siempre
-  termina con un smoke test. Si el pipeline está roto, se ve en la PR, no tras el merge. El environment
-  (`preview`/`production`) y los secrets de Cloudflare son del repo caller (o de la org).
+| Evento | static |
+|---|---|
+| PR | gitflow, gitleaks + trivy, checks HTML/CSS, preview `<rama>.<proyecto>.pages.dev` |
+| push `develop` | checks + preview `develop.<proyecto>.pages.dev` |
+| push `main` | checks + producción (environment `production`, aprobación) + smoke test del dominio |
 
-Caller mínimo (`fixcomap/web/.github/workflows/ci.yml`):
+El único check que exigen los rulesets es `cicd / ok`: los jobs de cada tipo pueden cambiar sin tocar
+ningún ruleset. Rulesets y environment `preview` estándar: `github/apply.sh <repo>` (admin, a mano).
 
-```yaml
-on:
-  pull_request: { branches: [develop, main] }
-  push: { branches: [develop, main] }
-permissions: {}
-concurrency: { group: ci-${{ github.head_ref || github.ref_name }}, cancel-in-progress: false }
-jobs:
-  checks:
-    uses: fixcomap/platform/.github/workflows/rw-static-checks.yml@main
-    with: { site_dir: public }
-  deploy:
-    needs: checks
-    uses: fixcomap/platform/.github/workflows/rw-pages-deploy.yml@main
-    with:
-      project_name: fixcomap-landing
-      site_dir: public
-      environment: ${{ github.ref_name == 'main' && 'production' || 'preview' }}
-      production_url: https://fixcomap.com
-    secrets: inherit
-```
+Alta de un proyecto:
 
-Los callers apuntan a `@main`: un cambio en `rw-*` llega a los sitios cuando se hace release aquí. Para
-probar un cambio antes, el caller de una PR de `web` puede apuntar temporalmente a `@feature/<rama>`.
-El proyecto de Pages y sus dominios se declaran en `infra/dns/pages.tf` (import del proyecto que crea
-`wrangler` la primera vez).
+1. PR aquí con `catalog/<repo>.yaml` (lo valida el job `catalog` de `pr-checks.yml`). Para `static`,
+   `infra/dns` crea dominios y CNAME en la release; el proyecto de Pages lo crea `wrangler` en el
+   primer deploy, así que el primer deploy del sitio va antes que esa release.
+2. Repo con `caller/ci.yml` y `github/apply.sh <repo>`.
+
+Los callers fijan una versión (`cicd.yml@vX.Y.Z`): un cambio aquí llega a cada proyecto cuando sube
+su versión. Para probar antes, un caller puede apuntar temporalmente a `@feature/<rama>`; el catálogo
+se lee de esa misma ref.
 
 ## Runbook: cuando algo está en rojo
 
