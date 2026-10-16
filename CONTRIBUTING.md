@@ -112,7 +112,21 @@ Alta de un proyecto:
 1. PR aquí con `catalog/<repo>.yaml` (lo valida el job `catalog` de `pr-checks.yml`). Para `static`,
    `infra/dns` crea dominios y CNAME en la release; el proyecto de Pages lo crea `wrangler` en el
    primer deploy, así que el primer deploy del sitio va antes que esa release.
-2. Repo con `caller/ci.yml` y `github/apply.sh <repo>`.
+2. Repo con `caller/ci.yml`. Los rulesets impiden crear `develop` y `main` sin PR, así que en un
+   repo nuevo: `BOOTSTRAP=1 github/apply.sh <repo>` (desactivados), push de `develop` y `main`,
+   y `github/apply.sh <repo>` (activos).
+
+Para `webapp`, además (dos releases, porque invoker y domain mappings exigen el servicio):
+
+1. Entrada con `public: false`. La release crea `<service>-runtime`, los secretos
+   `<service>-config` y `<service>-database-url` (placeholder), el WIF del repo y los CNAME.
+2. Cargar los secretos a mano: `gcloud secrets versions add <service>-config --data-file=-`.
+3. Push a `develop` crea `<service>-dev`; la primera release a `main`, `<service>` (privados:
+   se prueban con `curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" <url>`).
+4. `public: true` y release: `run.invoker` público y domain mappings.
+
+Contrato de la app: escucha en 8080, `/health` responde 200, lee `APP_CONFIG` (JSON),
+`DATABASE_URL_FILE`, `DB_NAME` (opcional) y `APP_BASE_URL` (primer hostname del entorno).
 
 Los callers fijan una versión (`cicd.yml@vX.Y.Z`): un cambio aquí llega a cada proyecto cuando sube
 su versión. Para probar antes, un caller puede apuntar temporalmente a `@feature/<rama>`; el catálogo

@@ -14,6 +14,7 @@
 #
 #   github/apply.sh elias agustin web platform
 #   DRY_RUN=1 github/apply.sh web     muestra lo que haría, sin escribir
+#   BOOTSTRAP=1 github/apply.sh x     repo nuevo: rulesets desactivados hasta el push inicial
 set -euo pipefail
 
 ORG=fixcomap
@@ -36,10 +37,13 @@ for repo in "$@"; do
 
   for f in "$DIR"/rulesets/*.json; do
     name=$(jq -r .name "$f")
-    body=$(jq --slurpfile c "$checks" '
+    # BOOTSTRAP=1: rulesets desactivados para el push inicial de un repo nuevo
+    # (crear develop y main sin PR); después, apply.sh sin BOOTSTRAP los activa.
+    body=$(jq --slurpfile c "$checks" --arg enf "${BOOTSTRAP:+disabled}" '
       .rules |= map(if .type == "required_status_checks"
         then .parameters.required_status_checks = ($c[0] | map({context: .}))
-        else . end)' "$f")
+        else . end)
+      | if $enf != "" then .enforcement = $enf else . end' "$f")
     id=$(awk -F'\t' -v n="$name" '$1 == n {print $2}' <<<"$existing")
     if [ -n "$id" ]; then
       write PUT "repos/$ORG/$repo/rulesets/$id" "$body"
