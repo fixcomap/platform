@@ -325,8 +325,8 @@ Las instancias en ejecución siguen con la versión anterior hasta que escalan a
 
 El contenido de `fixcomap.com` / `www` vive en [`fixcomap/web`](https://github.com/fixcomap/web)
 (HTML/CSS estático, mismos rulesets y checks que aquí). Este repo solo tiene el proyecto de Cloudflare
-Pages, sus dominios y el DNS (`infra/dns/pages.tf`) y los *reusable workflows* que `web` llama
-(`rw-static-checks.yml`, `rw-pages-deploy.yml`; ver `CONTRIBUTING.md`): PR → preview
+Pages, sus dominios y el DNS (`infra/dns/pages.tf`, desde `catalog/web.yaml`) y el pipeline estándar
+que `web` llama (`cicd.yml`; ver `CONTRIBUTING.md`): PR → preview
 `<rama>.fixcomap-landing.pages.dev`, `develop` → preview, `main` → producción. Free tier: 500
 despliegues/mes, tráfico ilimitado.
 
