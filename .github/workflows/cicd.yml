@@ -6,12 +6,14 @@
 #             Repo sin entrada en el catálogo: no se hace nada (no-action).
 #   comunes   gitflow (solo PR) + gitleaks/trivy, para cualquier tipo.
 #   static    checks HTML/CSS + Cloudflare Pages (PR/develop: preview; main: producción).
+#   webapp    checks del runtime + imagen (trivy, cosign) + Cloud Run con infra/webapp
+#             (PR: solo build; develop: <service>-dev; main: <service> + tag vVERSION).
 #   ok        check único que exigen los rulesets.
 #
-# Etapas por evento:
-#   pull_request -> checks + preview (las PRs de forks solo checks: sin secrets)
-#   push develop -> checks + preview
-#   push main    -> checks + producción
+# Etapas por evento (static | webapp):
+#   pull_request -> checks + preview | checks + build sin push (forks: solo checks)
+#   push develop -> checks + preview | despliegue en development
+#   push main    -> checks + producción, ambos con aprobación del environment production
 name: cicd
 
 on:
@@ -25,6 +27,14 @@ defaults:
 
 env:
   WRANGLER_VERSION: 4.132.0
+  TOFU_VERSION: 1.12.6
+  GCP_REGION: europe-west1
+  # No son secretos: identifican el pool de WIF y la SA que despliega L2. Viven
+  # aquí y no como variables de cada repo para que un repo nuevo no configure nada.
+  GCP_WIF_PROVIDER: projects/582439706326/locations/global/workloadIdentityPools/github/providers/github-oidc
+  GH_DEPLOYER_SA: gh-deployer@fixcomap-core.iam.gserviceaccount.com
+  STATE_BUCKET_APP: fixcomap-core-tfstate-app
+  DOCKER_REPO: europe-west1-docker.pkg.dev/fixcomap-core/docker
 
 jobs:
   resolve:
@@ -43,6 +53,9 @@ jobs:
       require_csp: ${{ steps.catalog.outputs.require_csp }}
       pages_project: ${{ steps.catalog.outputs.pages_project }}
       production_url: ${{ steps.catalog.outputs.production_url }}
+      service: ${{ steps.stage.outputs.service }}
+      runtime: ${{ steps.catalog.outputs.runtime }}
+      public: ${{ steps.catalog.outputs.public }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -100,16 +113,35 @@ jobs:
               echo "pages_project=$(yq -r '.static.pages_project' "$f")"
               echo "production_url=https://$(yq -r '.static.hostnames[0]' "$f")"
             fi
+            if [ "$type" = webapp ]; then
+              echo "base_service=$(yq -r '.webapp.service' "$f")"
+              echo "runtime=$(yq -r '.webapp.runtime // "go"' "$f")"
+              echo "public=$(yq -r '.webapp.public == true' "$f")"
+            fi
           } >> "$GITHUB_OUTPUT"
           { echo "## $GITHUB_REPOSITORY: \`$type\` (platform@${{ steps.ref.outputs.ref }})"; echo '```yaml'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: etapa
         id: stage
         env:
+          TYPE: ${{ steps.catalog.outputs.type }}
+          BASE_SERVICE: ${{ steps.catalog.outputs.base_service }}
           FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" = main ]; then env=production; else env=preview; fi
+          main=false; [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" = main ] && main=true
+          develop=false; [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" = develop ] && develop=true
           deploy=true; [ "$FORK" = true ] && deploy=false
+          case "$TYPE" in
+            static)
+              if [ "$main" = true ]; then env=production; else env=preview; fi ;;
+            webapp)
+              # Solo despliegan main y develop: una PR construye la imagen sin publicarla.
+              if [ "$main" = true ]; then env=production; service="$BASE_SERVICE"
+              elif [ "$develop" = true ]; then env=development; service="$BASE_SERVICE-dev"
+              else env=none; deploy=false; fi
+              echo "service=${service:-}" >> "$GITHUB_OUTPUT" ;;
+            *) env=none; deploy=false ;;
+          esac
           echo "environment=$env" >> "$GITHUB_OUTPUT"
           echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
           echo "etapa: **$env** (deploy=$deploy)" >> "$GITHUB_STEP_SUMMARY"
@@ -298,6 +330,196 @@ jobs:
             [ "$ok" = 1 ] || { echo "::error::$u no responde 200 tras el deploy (último código: $code)"; exit 1; }
           done
 
+  # ---------- webapp: Cloud Run ----------
+
+  webapp-checks:
+    name: webapp (${{ needs.resolve.outputs.runtime }})
+    needs: resolve
+    if: needs.resolve.outputs.type == 'webapp'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: runtime soportado
+        env:
+          RUNTIME: ${{ needs.resolve.outputs.runtime }}
+        run: |
+          case "$RUNTIME" in go) ;; *) echo "::error::runtime '$RUNTIME' sin checks en cicd.yml"; exit 1 ;; esac
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: needs.resolve.outputs.runtime == 'go'
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        if: needs.resolve.outputs.runtime == 'go'
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: go vet
+        if: needs.resolve.outputs.runtime == 'go'
+        run: go vet ./...
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        if: needs.resolve.outputs.runtime == 'go'
+      - name: go test
+        if: needs.resolve.outputs.runtime == 'go'
+        run: go test -race ./...
+
+  webapp-image:
+    name: webapp (imagen)
+    needs: resolve
+    if: needs.resolve.outputs.type == 'webapp'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC para GCP y para la firma keyless de cosign
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    env:
+      SERVICE: ${{ needs.resolve.outputs.service }}
+      DEPLOY: ${{ needs.resolve.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: build
+        # --provenance=false: sin manifiestos de attestation, que en Artifact
+        # Registry aparecen como versiones sin tag y ocupan cuota.
+        # Paquete por servicio: keep-latest-5 de Artifact Registry cuenta por
+        # paquete y los pushes de develop no desplazan las imágenes de producción.
+        run: |
+          echo "IMAGE_REF=$DOCKER_REPO/${SERVICE:-pr}:${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+          docker build --provenance=false -t "$DOCKER_REPO/${SERVICE:-pr}:${GITHUB_SHA::12}" .
+
+      - name: trivy image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_REF }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+        env:
+          TRIVY_DISABLE_VEX_NOTICE: "true"
+
+      - name: auth GCP (gh-deployer)
+        if: env.DEPLOY == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GH_DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        if: env.DEPLOY == 'true'
+
+      - name: push
+        id: push
+        if: env.DEPLOY == 'true'
+        run: |
+          gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
+          docker push "$IMAGE_REF"
+          digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_REF")
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "imagen: $digest" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: env.DEPLOY == 'true'
+
+      - name: cosign sign (keyless)
+        # Firma por digest con la identidad OIDC del workflow.
+        if: env.DEPLOY == 'true'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: cosign sign --yes "$DIGEST"
+
+  webapp-deploy:
+    name: webapp (${{ needs.resolve.outputs.service }})
+    needs: [resolve, gitflow, security, webapp-checks, webapp-image]
+    if: >-
+      !cancelled() && needs.resolve.outputs.type == 'webapp' && needs.resolve.outputs.deploy == 'true'
+      && needs.security.result == 'success' && needs.webapp-checks.result == 'success'
+      && needs.webapp-image.result == 'success'
+      && contains(fromJSON('["success","skipped"]'), needs.gitflow.result)
+    runs-on: ubuntu-latest
+    # production: aprobación del environment del repo; development: sin protección.
+    environment: ${{ needs.resolve.outputs.environment }}
+    concurrency:
+      group: deploy-${{ needs.resolve.outputs.service }}
+      cancel-in-progress: false
+    permissions:
+      contents: write # tag vVERSION
+      id-token: write
+    env:
+      SERVICE: ${{ needs.resolve.outputs.service }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # L2 y catálogo de la misma versión de platform que este workflow.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fixcomap/platform
+          ref: ${{ needs.resolve.outputs.platform_ref }}
+          path: .platform
+          sparse-checkout: |
+            catalog
+            modules
+            infra/webapp
+          persist-credentials: false
+
+      - name: auth GCP (gh-deployer)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GH_DEPLOYER_SA }}
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tofu_wrapper: false
+
+      - name: apply infra/webapp
+        id: apply
+        working-directory: .platform/infra/webapp
+        env:
+          TF_VAR_service: ${{ env.SERVICE }}
+          TF_VAR_image: ${{ needs.webapp-image.outputs.digest }}
+        run: |
+          tofu init -input=false -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=$SERVICE"
+          tofu plan -input=false -no-color -out=tfplan
+          { echo "## apply infra/webapp ($SERVICE)"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          tofu apply -input=false tfplan
+          echo "url=$(tofu output -raw service_url)" >> "$GITHUB_OUTPUT"
+          echo "public_url=$(tofu output -raw public_url)" >> "$GITHUB_OUTPUT"
+          echo "url: $(tofu output -raw service_url)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: smoke test
+        # La revisión solo queda lista si /health pasó la startup probe; esto
+        # comprueba además DNS, certificado y mapping. Sin public aún no hay
+        # acceso público que probar.
+        if: needs.resolve.outputs.public == 'true'
+        env:
+          URL: ${{ steps.apply.outputs.public_url }}
+        run: |
+          for _ in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$URL/health" || true)
+            [ "$code" = "200" ] && { echo "$URL/health → 200"; exit 0; }
+            sleep 10
+          done
+          echo "::error::$URL/health no responde 200 tras el deploy (último código: $code)"; exit 1
+
+      - name: tag vVERSION
+        # Solo producción y solo si no existe: un hotfix sin cambio de VERSION no re-etiqueta.
+        if: needs.resolve.outputs.environment == 'production' && hashFiles('VERSION') != ''
+        run: |
+          v="v$(tr -d '[:space:]' < VERSION)"
+          if git ls-remote --exit-code --tags origin "refs/tags/$v" >/dev/null; then echo "tag $v ya existe"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$v" -m "$v"
+          git push origin "$v"
+
   # ---------- resultado ----------
 
   # Único check que exigen los rulesets, igual para todos los repos y tipos: los
@@ -305,7 +527,7 @@ jobs:
   # cuenta como bueno (no aplica a este tipo/evento); failure o cancelled, no.
   ok:
     name: ok
-    needs: [resolve, gitflow, security, static-checks, static-deploy]
+    needs: [resolve, gitflow, security, static-checks, static-deploy, webapp-checks, webapp-image, webapp-deploy]
     if: always()
     runs-on: ubuntu-latest
     steps:

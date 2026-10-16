@@ -4,17 +4,15 @@
 # despliegue pasa por sus checks y queda registrado en Actions. Aquí solo el
 # proyecto, sus dominios y el DNS: dar de alta un sitio es añadir su fichero al
 # catálogo.
+module "catalog" {
+  source = "../../modules/catalog"
+  dir    = "${path.module}/../../catalog"
+}
+
 locals {
-  catalog_dir = "${path.module}/../../catalog"
-  catalog = {
-    for f in fileset(local.catalog_dir, "*.yaml") :
-    trimsuffix(f, ".yaml") => yamldecode(file("${local.catalog_dir}/${f}"))
-  }
-  static_sites = { for k, v in local.catalog : k => v.static if v.type == "static" }
-  # hostname => sitio; catalog-check (pr-checks) garantiza que no se repiten.
-  static_hostnames = merge([
-    for k, s in local.static_sites : { for h in s.hostnames : h => k }
-  ]...)
+  static_sites = module.catalog.static
+  # catalog-check (pr-checks) garantiza que los hostnames no se repiten.
+  static_hostnames = module.catalog.static_hostnames
 }
 
 resource "cloudflare_pages_project" "static" {

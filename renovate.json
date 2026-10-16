@@ -69,7 +69,7 @@
       "extractVersionTemplate": "^v(?<version>.*)$"
     },
     {
-      "description": "wrangler fijado como env WRANGLER_VERSION en rw-pages-deploy.yml",
+      "description": "wrangler fijado como env WRANGLER_VERSION en cicd.yml",
       "customType": "regex",
       "managerFilePatterns": [
         "/^\\.github/workflows/.+\\.ya?ml$/"
