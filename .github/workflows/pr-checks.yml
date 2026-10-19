@@ -125,6 +125,12 @@ jobs:
         with:
           # gitleaks git escanea el historial, no solo el árbol de trabajo
           fetch-depth: 0
+      - name: higiene
+        # Lo que nunca se versiona (IA, .env, estado, binarios, >5 MB) y commits con firma de IA.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash scripts/higiene.sh
       - name: gitleaks
         # Binario directo en vez de gitleaks-action: la action pide licencia para organizaciones.
         run: |
