@@ -20,3 +20,11 @@ trivy-*.json
 # Configuración local de Claude Code: no es parte del proyecto
 .claude/
 CLAUDE.md
+
+# Variables de entorno locales, dependencias y binarios de go build
+.env
+.env.*
+!.env.example
+node_modules/
+/app/app
+.DS_Store
