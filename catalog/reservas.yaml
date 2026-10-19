@@ -33,5 +33,6 @@ webapp:
     hostnames: [api-reservas.fixcomap.com]
     front_hostnames: [reservas.fixcomap.com]
   development:
+    public: true               # producción sigue privada hasta su primer deploy
     hostnames: [api-reservas.dev.fixcomap.com]
     front_hostnames: [reservas.dev.fixcomap.com]

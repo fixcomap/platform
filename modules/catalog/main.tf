@@ -43,7 +43,9 @@ locals {
         environment = e
         hostnames   = w[e].hostnames
         db_name     = try(w[e].db_name, "")
-        public      = w.public
+        # webapp.<entorno>.public pisa a webapp.public: desarrollo puede abrirse
+        # antes de que exista el servicio de producción.
+        public      = try(w[e].public, w.public)
         health_path = w.health_path
         legacy      = w.legacy
         runtime_sa  = "${w.service}-runtime"
