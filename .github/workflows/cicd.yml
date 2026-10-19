@@ -4,7 +4,7 @@
 #   resolve   catalog/<repo>.yaml de la misma versión de platform que este
 #             workflow -> tipo de proyecto, config y etapa (preview | production).
 #             Repo sin entrada en el catálogo: no se hace nada (no-action).
-#   comunes   gitflow (solo PR) + gitleaks/trivy, para cualquier tipo.
+#   comunes   gitflow (solo PR) + gitleaks/trivy + higiene (scripts/higiene.sh), para cualquier tipo.
 #   static    checks HTML/CSS + Cloudflare Pages (PR/develop: preview; main: producción).
 #   webapp    checks del runtime + imagen (trivy, cosign) + migraciones + Cloud Run con
 #             infra/webapp (PR: solo build; develop: <service>-dev; main: <service> + tag
@@ -56,7 +56,7 @@ jobs:
       production_url: ${{ steps.catalog.outputs.production_url }}
       service: ${{ steps.stage.outputs.service }}
       runtime: ${{ steps.catalog.outputs.runtime }}
-      public: ${{ steps.catalog.outputs.public }}
+      public: ${{ steps.stage.outputs.public }}
       context: ${{ steps.catalog.outputs.context }}
       health_path: ${{ steps.catalog.outputs.health_path }}
       migrate: ${{ steps.catalog.outputs.migrate }}
@@ -126,7 +126,6 @@ jobs:
               echo "base_service=$(yq -r '.webapp.service' "$f")"
               echo "runtime=$(yq -r '.webapp.runtime // "go"' "$f")"
               echo "node_version=$(yq -r '.webapp.node_version // "22"' "$f")"
-              echo "public=$(yq -r '.webapp.public == true' "$f")"
               echo "context=$(yq -r '.webapp.context // "."' "$f")"
               echo "health_path=$(yq -r '.webapp.health_path // "/health"' "$f")"
               echo "migrate=$(yq -r '.webapp.migrate // ""' "$f")"
@@ -170,6 +169,13 @@ jobs:
           echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
           echo "etapa: **$env** (deploy=$deploy)" >> "$GITHUB_STEP_SUMMARY"
 
+          # public del entorno (webapp.<entorno>.public pisa a webapp.public), como modules/catalog.
+          f=".platform/catalog/${GITHUB_REPOSITORY#*/}.yaml"
+          if [ "$TYPE" = webapp ]; then
+            case "$env" in production|development) e=$env ;; *) e=development ;; esac
+            echo "public=$(yq -r ".webapp.$e.public // .webapp.public // false" "$f")" >> "$GITHUB_OUTPUT"
+          fi
+
           # Front de una webapp: variables del build (VITE_*...) con {api_url} y
           # {front_url} del entorno; una PR construye con las de desarrollo.
           f=".platform/catalog/${GITHUB_REPOSITORY#*/}.yaml"
@@ -208,7 +214,7 @@ jobs:
           echo "$HEAD" | grep -Eq "$pat" || { echo "'$HEAD' no puede mergearse en '$BASE' (patrón: $pat)"; exit 1; }
 
   security:
-    name: gitleaks + trivy
+    name: seguridad + higiene
     needs: resolve
     if: needs.resolve.outputs.type != 'none'
     runs-on: ubuntu-latest
@@ -217,8 +223,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # gitleaks escanea el historial
+          fetch-depth: 0 # gitleaks escanea el historial; higiene, los commits de la PR
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fixcomap/platform
+          ref: ${{ needs.resolve.outputs.platform_ref }}
+          path: .platform
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: higiene
+        # Lo que nunca se versiona (IA, .env, estado, binarios, >5 MB) y commits con firma de IA.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git ls-files --error-unmatch .platform >/dev/null 2>&1 && { echo "::error::.platform está versionado"; exit 1; }
+          bash .platform/scripts/higiene.sh
       - name: gitleaks
         run: |
           docker run --rm -v "$PWD:/repo" -w /repo \
@@ -367,7 +388,9 @@ jobs:
       - name: smoke test
         env:
           # Dominio propio: el de producción de un static, o el del entorno del front de una webapp.
-          URLS: ${{ steps.deploy.outputs.url }} ${{ needs.resolve.outputs.environment == 'production' && needs.resolve.outputs.type == 'static' && needs.resolve.outputs.production_url || '' }} ${{ needs.resolve.outputs.site_url }}
+          # El de un front solo con public: true: hasta entonces su dominio no está en Pages (lo
+          # añade el apply de dns posterior al primer deploy) y la API no es accesible.
+          URLS: ${{ steps.deploy.outputs.url }} ${{ needs.resolve.outputs.environment == 'production' && needs.resolve.outputs.type == 'static' && needs.resolve.outputs.production_url || '' }} ${{ needs.resolve.outputs.public == 'true' && needs.resolve.outputs.site_url || '' }}
         run: |
           for u in $URLS; do
             ok=0

@@ -104,6 +104,10 @@ entrada en el catálogo no hace nada.
 | push `develop` | checks + preview `develop.<proyecto>.pages.dev` |
 | push `main` | checks + producción (environment `production`, aprobación) + smoke test del dominio |
 
+Todo repo pasa además por `scripts/higiene.sh`: la PR falla si versiona configuración de herramientas
+de IA (`CLAUDE.md`, `.claude/`, `AGENTS.md`, `.cursor`…), `.env`, estado de OpenTofu, `node_modules/`,
+binarios ejecutables o ficheros de más de 5 MB, o si un commit lleva co-autor o firma de IA.
+
 El único check que exigen los rulesets es `cicd / ok`: los jobs de cada tipo pueden cambiar sin tocar
 ningún ruleset. Rulesets y environment `preview` estándar: `github/apply.sh <repo>` (admin, a mano).
 
