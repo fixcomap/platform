@@ -9,17 +9,47 @@ module "catalog" {
   dir    = "${path.module}/../../catalog"
 }
 
+# Proyectos que ya existen en la cuenta. El de un sitio nuevo lo crea wrangler
+# en su primer deploy, que llega después de la release que lo da de alta en el
+# catálogo: hasta entonces se omite y entra (import, dominios, CNAME) en el
+# siguiente apply de dns.
+data "cloudflare_pages_projects" "all" {
+  account_id = var.cloudflare_account_id
+  max_items  = 100
+
+  lifecycle {
+    # Un listado vacío por un fallo de la API dejaría fuera todos los sitios y
+    # el plan querría borrar sus dominios: mejor fallar.
+    postcondition {
+      condition     = length(self.result) > 0
+      error_message = "cloudflare_pages_projects vacío: no se planifica dns sin la lista de proyectos."
+    }
+  }
+}
+
 locals {
-  static_sites = module.catalog.static
-  # catalog-check (pr-checks) garantiza que los hostnames no se repiten.
-  static_hostnames = module.catalog.static_hostnames
+  existing_pages = toset([for p in data.cloudflare_pages_projects.all.result : p.name])
+
+  # Sitios static y fronts de webapps; catalog-check (pr-checks) garantiza que
+  # proyectos y hostnames no se repiten.
+  pages_sites = { for k, name in module.catalog.pages_sites : k => name if contains(local.existing_pages, name) }
+  pages_hostnames = {
+    for h, x in module.catalog.pages_hostnames : h => x if contains(keys(local.pages_sites), x.site)
+  }
 }
 
 resource "cloudflare_pages_project" "static" {
-  for_each          = local.static_sites
+  for_each          = local.pages_sites
   account_id        = var.cloudflare_account_id
-  name              = each.value.pages_project
+  name              = each.value
   production_branch = "main"
+
+  # Segunda red: si un sitio desaparece del listado o del catálogo por error, el
+  # plan falla en vez de borrar el proyecto (y con él sus dominios y CNAME).
+  # Dar de baja un sitio es quitar esto a propósito en la misma PR.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # El proyecto lo crea wrangler en el primer deploy y aquí se importa al estado;
@@ -28,30 +58,32 @@ resource "cloudflare_pages_project" "static" {
 # queremos: publica el pipeline, no Cloudflare. Consecuencia: el primer deploy
 # de un sitio nuevo debe ir antes de la release de platform que lo importa.
 import {
-  for_each = local.static_sites
+  for_each = local.pages_sites
   to       = cloudflare_pages_project.static[each.key]
-  id       = "${var.cloudflare_account_id}/${each.value.pages_project}"
+  id       = "${var.cloudflare_account_id}/${each.value}"
 }
 
 # Pages emite el certificado (Google Trust Services) al ver el CNAME.
 resource "cloudflare_pages_domain" "static" {
-  for_each     = local.static_hostnames
+  for_each     = local.pages_hostnames
   account_id   = var.cloudflare_account_id
-  project_name = cloudflare_pages_project.static[each.value].name
+  project_name = cloudflare_pages_project.static[each.value.site].name
   name         = each.key
 }
 
 # Proxied (naranja): obligatorio para Pages con dominio propio. En el apex
-# Cloudflare aplana el CNAME automáticamente.
+# Cloudflare aplana el CNAME automáticamente. Un hostname de rama (front de
+# desarrollo de una webapp) apunta al alias <rama>.<proyecto>.pages.dev.
 resource "cloudflare_dns_record" "static" {
-  for_each = local.static_hostnames
+  for_each = local.pages_hostnames
   zone_id  = var.cloudflare_zone_id
   name     = each.key
   type     = "CNAME"
-  content  = cloudflare_pages_project.static[each.value].subdomain
-  ttl      = 1
-  proxied  = true
-  comment  = "catalog/${each.value}.yaml en Cloudflare Pages (OpenTofu, infra/dns)"
+  content = (each.value.branch == "" ? cloudflare_pages_project.static[each.value.site].subdomain
+  : "${each.value.branch}.${cloudflare_pages_project.static[each.value.site].subdomain}")
+  ttl     = 1
+  proxied = true
+  comment = "catalog/${each.value.site}.yaml en Cloudflare Pages (OpenTofu, infra/dns)"
 }
 
 # Recursos anteriores al catálogo, escritos a mano por sitio.

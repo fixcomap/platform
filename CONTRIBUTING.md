@@ -125,8 +125,29 @@ Para `webapp`, además (dos releases, porque invoker y domain mappings exigen el
    se prueban con `curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" <url>`).
 4. `public: true` y release: `run.invoker` público y domain mappings.
 
-Contrato de la app: escucha en 8080, `/health` responde 200, lee `APP_CONFIG` (JSON),
-`DATABASE_URL_FILE`, `DB_NAME` (opcional) y `APP_BASE_URL` (primer hostname del entorno).
+Contrato de la app: un único contenedor (`Dockerfile` en la raíz) que escucha en `$PORT` (8080),
+`/health` responde 200 sin tocar la base de datos, y lee `APP_CONFIG` (JSON), `DATABASE_URL_FILE`,
+`DB_NAME` (opcional) y `APP_BASE_URL` (primer hostname del entorno).
+
+Campos opcionales de `webapp` (ver `catalog/reservas.yaml`):
+
+| Campo | Para qué |
+|---|---|
+| `context` | carpeta con el `Dockerfile` (por defecto `.`) |
+| `health_path` | ruta de la startup probe y del smoke test (por defecto `/health`) |
+| `secrets` | variables secretas: un secreto `<servicio>-<variable-en-kebab>` por entorno (`reservas-mp-access-token`, `reservas-dev-mp-access-token`); sin `secrets`, contrato original (`APP_CONFIG` + `DATABASE_URL_FILE`) |
+| `env` | variables sin secretos; `{api_url}` y `{front_url}` se sustituyen por el primer hostname del entorno |
+| `migrate` | comando que corre en `context` antes de cada deploy, con `DATABASE_URL` = secreto `<servicio>-database-url-direct` |
+| `front` | front estático en Cloudflare Pages (`dir`, `build_cmd`, `site_dir`, `pages_project`, `env` del build); se despliega después de la API, en `develop` (rama `develop`, `front_hostnames` de desarrollo) y en `main` |
+
+Con `front`, el proyecto de Pages lo crea su primer deploy: `infra/dns` lo importa, con sus dominios
+y CNAME, en el siguiente apply (por ejemplo, la release que pone `public: true`). El repo necesita
+los secrets `CLOUDFLARE_API_TOKEN` y `CLOUDFLARE_ACCOUNT_ID` en sus environments `development` y
+`production`, como los sitios static en `preview`/`production`.
+
+Checks por `runtime` del catálogo: `go` (gofmt, vet, golangci-lint, `go test -race`); `node` (en cada
+directorio con `package-lock.json`: `npm ci` y los scripts `lint`, `test` y `build` que existan;
+versión en `webapp.node_version`, por defecto 22).
 
 Los callers fijan una versión (`cicd.yml@vX.Y.Z`): un cambio aquí llega a cada proyecto cuando sube
 su versión. Para probar antes, un caller puede apuntar temporalmente a `@feature/<rama>`; el catálogo

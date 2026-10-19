@@ -1,0 +1,37 @@
+# Reservas online para clubes de pádel: front React en Cloudflare Pages y API
+# Node/Express en Cloud Run, Postgres en Neon.
+repo: fixcomap/reservas
+type: webapp
+webapp:
+  service: reservas            # API: reservas (producción) y reservas-dev
+  runtime: node
+  node_version: "22"
+  context: apps/api            # carpeta con el Dockerfile de la API
+  health_path: /salud          # hace SELECT 1: el deploy falla si la API no ve la base
+  # false hasta que el primer deploy haya creado los servicios (alta en dos releases).
+  public: false
+  monitoring: true
+  # Variables secretas: un secreto por variable y entorno (reservas-database-url,
+  # reservas-dev-mp-access-token...). Se cargan a mano; ver README de reservas.
+  secrets: [DATABASE_URL, MP_ACCESS_TOKEN, MP_WEBHOOK_SECRET]
+  # Variables sin secretos; {api_url} y {front_url} = primer hostname de cada uno en el entorno.
+  env:
+    FRONT_URL: "{front_url}"
+    API_URL: "{api_url}"
+  # En apps/api antes de cada deploy, con DATABASE_URL = secreto <servicio>-database-url-direct
+  # (cadena directa de Neon: el lock de las migraciones no pasa por el pooler).
+  migrate: npm run migrar
+  front:
+    dir: apps/web
+    build_cmd: npm run build
+    site_dir: dist             # relativo a dir
+    pages_project: fixcomap-reservas
+    env:
+      VITE_API_URL: "{api_url}"
+      VITE_DEMO: "true"
+  production:
+    hostnames: [api-reservas.fixcomap.com]
+    front_hostnames: [reservas.fixcomap.com]
+  development:
+    hostnames: [api-reservas.dev.fixcomap.com]
+    front_hostnames: [reservas.dev.fixcomap.com]

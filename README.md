@@ -1,16 +1,58 @@
 # fixcomap/platform
 
-Infraestructura base de fixcomap en GCP (`fixcomap-core`, `europe-west1`) gestionada con OpenTofu
-y desplegada íntegramente por GitHub Actions mediante Workload Identity Federation. Sin claves JSON.
+Repo central de fixcomap: la infraestructura compartida (GCP `fixcomap-core`, `europe-west1`, y DNS en
+Cloudflare), el catálogo de proyectos y el pipeline estándar que usan todos los repos. Todo con OpenTofu
+y GitHub Actions por Workload Identity Federation: sin claves JSON.
+
+## Mapa
+
+| Repo | Tipo | Producción | Desarrollo / preview |
+|---|---|---|---|
+| [`plantilla`](https://github.com/fixcomap/plantilla) | webapp (Go, Cloud Run) | plantilla.fixcomap.com | plantilla.dev.fixcomap.com |
+| [`reservas`](https://github.com/fixcomap/reservas) | webapp (React + Node, Cloud Run) | reservas.fixcomap.com (pendiente) | reservas.dev.fixcomap.com (pendiente) |
+| [`web`](https://github.com/fixcomap/web) | static (Cloudflare Pages) | fixcomap.com, www | develop.fixcomap-landing.pages.dev |
+| [`agustin`](https://github.com/fixcomap/agustin) | static | agustin.fixcomap.com | develop.fixcomap-agustin.pages.dev |
+| [`elias`](https://github.com/fixcomap/elias) | static (React + Vite) | elias.fixcomap.com | develop.fixcomap-elias.pages.dev |
+| `platform` (este) | infra + pipeline | — | — |
+
+Cada proyecto tiene su README con lo suyo (desarrollo local, configuración). Aquí, lo común.
+
+## Cómo funciona
+
+```
+fixcomap/<proyecto>                         fixcomap/platform
+  código                                      catalog/<proyecto>.yaml   qué es y dónde vive
+  .github/workflows/ci.yml  ──── uses ────▶   .github/workflows/cicd.yml  pipeline estándar
+  (idéntico en todos)                           │ lee el catálogo de su misma versión
+                                                ├─ static → checks + Cloudflare Pages
+                                                └─ webapp → checks + imagen + Cloud Run (infra/webapp)
+                                              infra/platform, infra/dns   crean por proyecto del
+                                                                          catálogo identidad, secretos,
+                                                                          dominios y DNS
+                                              github/apply.sh            rulesets y environments
+```
+
+- **Catálogo** (`catalog/<repo>.yaml`): un fichero por proyecto con su tipo (`static` o `webapp`) y
+  su configuración (hostnames, proyecto de Pages, servicio de Cloud Run…). Es la única fuente: el
+  pipeline y la infra leen de ahí. Un repo sin entrada no hace nada.
+- **Pipeline estándar** (`cicd.yml`): los repos de proyecto no tienen pipeline propio. PR → checks
+  (y preview en static); `develop` → desarrollo/preview; `main` → producción con aprobación. El único
+  check que exigen los rulesets es `cicd / ok`.
+- **Versiones**: cada `ci.yml` fija una versión de platform (`cicd.yml@vX.Y.Z`). Un cambio aquí llega
+  a un proyecto cuando sube su versión.
+- **GitHub**: `github/apply.sh <repo>` aplica rulesets (PR y checks obligatorios; solo el admin se
+  salta la aprobación, nunca los checks) y environments. Lo ejecuta un admin a mano.
+
+Dar de alta un proyecto, el flujo de ramas y el runbook: [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Capas
 
 | Capa | Directorio | Identidad que aplica | Cuándo | Contiene |
 |---|---|---|---|---|
 | L0 | `infra/bootstrap/` | Persona (Cloud Shell) la primera vez; después `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | Bucket de estado, APIs mínimas, WIF pool + provider, SA `tf-platform` |
-| L1 | `infra/platform/` | `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `app-runtime` / `tf-plan`, IAM (incl. `run.invoker` público), domain mapping, Secret Manager |
-| L2 | `infra/app/` | `gh-deployer` | `deploy.yml` → `app`, automático en `main` | Cloud Run (solo el servicio) |
-| dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | CNAME `app.fixcomap.com`, Pages (landing) y CNAME de `fixcomap.com`/`www` |
+| L1 | `infra/platform/` | `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `tf-plan`; por webapp del catálogo, `<service>-runtime`, secretos, WIF de su repo, `run.invoker` público y domain mappings |
+| L2 | `infra/webapp/` | `gh-deployer` | `cicd.yml` desde el repo de cada webapp | Cloud Run (solo el servicio), estado `prefix=<service>` |
+| dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | Por proyecto del catálogo: proyecto de Pages, dominios y CNAME (static) o CNAME a Cloud Run (webapp) |
 | observability | `infra/observability/` | Token de Grafana Cloud (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | Dashboard, SLOs y alertas de la app en Grafana Cloud |
 
 Estado: bucket `fixcomap-core-tfstate` (prefijos `bootstrap/`, `platform/`, `dns/`) y bucket propio
@@ -292,61 +334,33 @@ Todo lo que crea este repo está en free tier con la carga actual (cero tráfico
 Deliberadamente no hay: Cloud SQL, load balancer, NAT, IPs estáticas, GKE, KMS (CMEK), Artifact
 Analysis (escaneo de pago: $0.26/imagen; lo hace trivy en CI).
 
-## Secreto de configuración
+## Migración de plantilla (en curso)
 
-`app-config` se crea en L1 con una versión placeholder (write-only, no entra en el estado). El valor
-real se sube fuera del repo:
-
-```sh
-printf '%s' '<valor>' | gcloud secrets versions add app-config --project fixcomap-core --data-file=-
-```
-
-Cloud Run monta `latest` en `APP_CONFIG`; hace falta un nuevo despliegue (o revisión) para que lo lea.
+Hasta el corte, `plantilla.fixcomap.com` y el resto de hostnames los sirven los servicios antiguos
+`app` / `app-dev`, desplegados desde aquí (`app/`, `infra/app`, `deploy-dev.yml` y el job `app` de
+`deploy.yml`) con `app-runtime` y los secretos `app-config` / `database-url`. Los nuevos
+(`plantilla`, `plantilla-dev`) ya se despliegan desde `fixcomap/plantilla` con el pipeline estándar.
+Pasos que quedan: `public: true` en `catalog/plantilla.yaml` (domain mappings a los servicios nuevos)
+y una release que borra todo lo de `app`. Configuración, base de datos y desarrollo de la app:
+[README de plantilla](https://github.com/fixcomap/plantilla#readme).
 
 ## Base de datos (Neon)
 
-Postgres serverless en Neon (free tier). La cadena de conexión vive en Secret Manager (`database-url`,
-L1) y Cloud Run la monta como fichero en `/secrets/database-url` (volumen con `version = latest`: cada
-instancia nueva lee la versión actual; no hace falta redesplegar). `app-runtime` tiene
-`secretmanager.secretAccessor` solo sobre ese secreto. `/dbcheck` ejecuta `SELECT 1` y responde
-`db ok` / 503, sin exponer nunca la cadena.
+Postgres serverless en Neon (free tier), fuera de este repo. Cada webapp lee su cadena de conexión
+del secreto `<service>-database-url` y la base por entorno sale del catálogo (`db_name`).
 
-Subir o rotar el valor (cadena *pooled* de Neon, con `sslmode=require`), fuera del repo:
+## Sitios estáticos
 
-```sh
-gcloud auth login
-printf '%s' 'postgresql://USER:PASS@HOST/neondb?sslmode=require' | \
-  gcloud secrets versions add database-url --project fixcomap-core --data-file=-
-```
+Cloudflare Pages en modo *direct upload*: publica el pipeline estándar con `wrangler` y un token
+acotado a Pages (secret de los environments `production`/`preview` de cada repo). Free tier: 500
+despliegues/mes, tráfico ilimitado. Manual, una vez: `hola@fixcomap.com` en Email Routing.
 
-Las instancias en ejecución siguen con la versión anterior hasta que escalan a cero (segundos sin tráfico).
+## Desarrollo de webapps
 
-## Landing (`fixcomap/web`)
-
-El contenido de `fixcomap.com` / `www` vive en [`fixcomap/web`](https://github.com/fixcomap/web)
-(HTML/CSS estático, mismos rulesets y checks que aquí). Este repo solo tiene el proyecto de Cloudflare
-Pages, sus dominios y el DNS (`infra/dns/pages.tf`, desde `catalog/web.yaml`) y el pipeline estándar
-que `web` llama (`cicd.yml`; ver `CONTRIBUTING.md`): PR → preview
-`<rama>.fixcomap-landing.pages.dev`, `develop` → preview, `main` → producción. Free tier: 500
-despliegues/mes, tráfico ilimitado.
-
-El proyecto es de *direct upload*: publica `wrangler pages deploy` con un token acotado a Pages (secret
-de los environments `production`/`preview` de `web`, o de la org). Manual, una vez: crear
-`hola@fixcomap.com` en Email Routing.
-
-## Desarrollo (plantilla.dev.fixcomap.com)
-
-`deploy-dev.yml` despliega `app-dev` en cada push a `develop` (`dev.fixcomap.com` redirige al hostname principal): misma `infra/app` con estado
-`prefix=app-dev`, base de datos `app_dev` en el mismo Neon (`DB_NAME`), mismo `app-config` con
-`APP_BASE_URL`, sin uptime checks ni telemetría. Coste 0: comparte free tier de Cloud Run y Neon y no
-añade secretos. Contrapartida aceptada: misma SA (`gh-deployer`, `app-runtime`) que producción.
-
-Arranque (una vez):
-1. Neon: crear la base `app_dev` en la rama principal (*Databases → New database*), mismo owner.
-2. Google Auth Platform → Clients → `app`: añadir la redirect URI `https://plantilla.dev.fixcomap.com/auth/callback`.
-3. Release con este cambio (L1: binding WIF de `develop`; dns: CNAME `dev`).
-4. `gh variable set DEV_DEPLOY --body true` y relanzar `deploy-dev` (crea `app-dev`).
-5. PR con `dev_public = true` y `enable_dev_domain_mapping = true` (`infra/platform/variables.tf`) y release.
+Cada webapp tiene `<service>-dev`, desplegado en cada push a `develop`: mismo L2 con estado
+`prefix=<service>-dev`, misma identidad y secretos que producción, base de datos propia (`db_name`
+del catálogo), sin telemetría. Coste 0 (comparte free tier). Contrapartida aceptada: misma SA y mismo
+Neon que producción.
 
 ## Disponibilidad
 
@@ -395,11 +409,13 @@ gh variable set GRAFANA_ALERT_EMAIL --body "<email de un usuario de la org de Gr
 
 ## Verificar la firma de una imagen
 
+Las firma `cicd.yml` (keyless, identidad OIDC del workflow):
+
 ```sh
 cosign verify \
-  --certificate-identity-regexp '^https://github.com/fixcomap/platform/\.github/workflows/deploy\.yml@refs/heads/main$' \
+  --certificate-identity-regexp '^https://github.com/fixcomap/platform/\.github/workflows/cicd\.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  europe-west1-docker.pkg.dev/fixcomap-core/docker/app@sha256:<digest>
+  europe-west1-docker.pkg.dev/fixcomap-core/docker/<service>@sha256:<digest>
 ```
 
 ## Estado

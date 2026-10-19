@@ -4,8 +4,10 @@
 # no hay nada específico de ninguna app. IAM, secretos y hostnames viven en L1
 # (infra/platform/webapps.tf): L2 no toca IAM.
 #
-# Contrato con la app: escucha en 8080, responde 200 en /health, lee
-# APP_CONFIG (JSON) y la cadena de conexión en DATABASE_URL_FILE.
+# Contrato con la app: escucha en $PORT (8080) y responde 200 en health_path
+# (/health). Configuración, según el catálogo: APP_CONFIG (JSON) y la cadena de
+# conexión en DATABASE_URL_FILE (contrato original), o una variable de entorno
+# por cada webapp.secrets y webapp.env.
 #
 # Facturación por petición (cpu_idle) y escala a cero. Free tier: 2M peticiones,
 # 360k GB-s y 180k vCPU-s al mes; con este tamaño y sin tráfico real el coste es 0.
@@ -33,13 +35,16 @@ resource "google_cloud_run_v2_service" "service" {
     # Secreto como volumen: con version = "latest" Cloud Run lo resuelve al
     # arrancar cada instancia, así que una versión nueva entra sola al escalar
     # desde cero, sin redesplegar.
-    volumes {
-      name = "database-url"
-      secret {
-        secret = local.svc.database
-        items {
-          version = "latest"
-          path    = "database-url"
+    dynamic "volumes" {
+      for_each = local.svc.legacy ? [local.svc.database] : []
+      content {
+        name = "database-url"
+        secret {
+          secret = volumes.value
+          items {
+            version = "latest"
+            path    = "database-url"
+          }
         }
       }
     }
@@ -82,24 +87,57 @@ resource "google_cloud_run_v2_service" "service" {
         }
       }
 
-      env {
-        name = "APP_CONFIG"
-        value_source {
-          secret_key_ref {
-            secret  = local.svc.config
-            version = "latest"
+      dynamic "env" {
+        for_each = local.svc.legacy ? [local.svc.config] : []
+        content {
+          name = "APP_CONFIG"
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
           }
         }
       }
 
-      env {
-        name  = "DATABASE_URL_FILE"
-        value = "/secrets/database-url"
+      dynamic "env" {
+        for_each = local.svc.legacy ? ["/secrets/database-url"] : []
+        content {
+          name  = "DATABASE_URL_FILE"
+          value = env.value
+        }
       }
 
-      volume_mounts {
-        name       = "database-url"
-        mount_path = "/secrets"
+      dynamic "volume_mounts" {
+        for_each = local.svc.legacy ? ["/secrets"] : []
+        content {
+          name       = "database-url"
+          mount_path = volume_mounts.value
+        }
+      }
+
+      # webapp.env (sin secretos, con {api_url}/{front_url} ya resueltos) y
+      # webapp.secrets: una variable por secreto <servicio>-<variable>. Como
+      # env y no como volumen, una versión nueva entra con el siguiente deploy.
+      dynamic "env" {
+        for_each = local.svc.env
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
+      dynamic "env" {
+        for_each = local.svc.secrets
+        content {
+          name = env.key
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
+          }
+        }
       }
 
       # OpenTelemetry → Grafana Cloud por OTLP/HTTP con las variables estándar
@@ -140,7 +178,7 @@ resource "google_cloud_run_v2_service" "service" {
 
       startup_probe {
         http_get {
-          path = "/health"
+          path = local.svc.health_path
         }
         initial_delay_seconds = 0
         period_seconds        = 5
