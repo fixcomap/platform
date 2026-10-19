@@ -16,3 +16,7 @@ trivy-*.json
 
 # Override local para planificar sin bucket (backend local)
 **/backend_override.tf
+
+# Configuración local de Claude Code: no es parte del proyecto
+.claude/
+CLAUDE.md
