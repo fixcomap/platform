@@ -382,7 +382,9 @@ jobs:
       - name: smoke test
         env:
           # Dominio propio: el de producción de un static, o el del entorno del front de una webapp.
-          URLS: ${{ steps.deploy.outputs.url }} ${{ needs.resolve.outputs.environment == 'production' && needs.resolve.outputs.type == 'static' && needs.resolve.outputs.production_url || '' }} ${{ needs.resolve.outputs.site_url }}
+          # El de un front solo con public: true: hasta entonces su dominio no está en Pages (lo
+          # añade el apply de dns posterior al primer deploy) y la API no es accesible.
+          URLS: ${{ steps.deploy.outputs.url }} ${{ needs.resolve.outputs.environment == 'production' && needs.resolve.outputs.type == 'static' && needs.resolve.outputs.production_url || '' }} ${{ needs.resolve.outputs.public == 'true' && needs.resolve.outputs.site_url || '' }}
         run: |
           for u in $URLS; do
             ok=0
