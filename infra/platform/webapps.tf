@@ -101,6 +101,11 @@ resource "google_secret_manager_secret_version" "webapp_config_placeholder" {
   secret                 = google_secret_manager_secret.webapp_config[each.key].id
   secret_data_wo         = "placeholder"
   secret_data_wo_version = "1"
+
+  # Una vez cargado el valor real, el placeholder se desactiva a mano: no reactivarlo.
+  lifecycle {
+    ignore_changes = [enabled]
+  }
 }
 
 resource "google_secret_manager_secret" "webapp_database_url" {
@@ -119,6 +124,11 @@ resource "google_secret_manager_secret_version" "webapp_database_url_placeholder
   secret                 = google_secret_manager_secret.webapp_database_url[each.key].id
   secret_data_wo         = "postgres://placeholder"
   secret_data_wo_version = "1"
+
+  # Una vez cargado el valor real, el placeholder se desactiva a mano: no reactivarlo.
+  lifecycle {
+    ignore_changes = [enabled]
+  }
 }
 
 resource "google_secret_manager_secret" "webapp_env" {
@@ -140,6 +150,11 @@ resource "google_secret_manager_secret_version" "webapp_env_placeholder" {
   secret                 = google_secret_manager_secret.webapp_env[each.key].id
   secret_data_wo         = "placeholder"
   secret_data_wo_version = "1"
+
+  # Una vez cargado el valor real, el placeholder se desactiva a mano: no reactivarlo.
+  lifecycle {
+    ignore_changes = [enabled]
+  }
 }
 
 resource "google_secret_manager_secret" "webapp_migrate" {
@@ -159,6 +174,11 @@ resource "google_secret_manager_secret_version" "webapp_migrate_placeholder" {
   secret                 = google_secret_manager_secret.webapp_migrate[each.key].id
   secret_data_wo         = "placeholder"
   secret_data_wo_version = "1"
+
+  # Una vez cargado el valor real, el placeholder se desactiva a mano: no reactivarlo.
+  lifecycle {
+    ignore_changes = [enabled]
+  }
 }
 
 # Lo lee el job de deploy para correr webapp.migrate antes del apply de L2.
