@@ -70,13 +70,22 @@ jobs:
                   [ "$(yq -r ".webapp.$e.hostnames | length" "$f")" -gt 0 ] || fail "$f" "falta webapp.$e.hostnames"
                 done
                 case "$(yq -r '.webapp.runtime // "go"' "$f")" in go|node) ;; *) fail "$f" "webapp.runtime desconocido (go, node)" ;; esac
+                # Variables de entorno: el nombre del secreto sale de ellas.
+                bad=$(yq -r '(.webapp.secrets // [])[], ((.webapp.env // {}) | keys)[]' "$f" | grep -Ev '^[A-Z][A-Z0-9_]*$' || true)
+                [ -z "$bad" ] || fail "$f" "webapp.secrets/env: nombres de variable inválidos: $bad"
+                if [ "$(yq -r '.webapp.front != null' "$f")" = true ]; then
+                  [ "$(yq -r '.webapp.front.pages_project // ""' "$f")" != "" ] || fail "$f" "falta webapp.front.pages_project"
+                  for e in production development; do
+                    [ "$(yq -r ".webapp.$e.front_hostnames | length" "$f")" -gt 0 ] || fail "$f" "falta webapp.$e.front_hostnames"
+                  done
+                fi
                 ;;
               *) fail "$f" "type desconocido (static, webapp)" ;;
             esac
           done
-          dup=$(yq -N -r '(.static.hostnames[]?), (.webapp.production.hostnames[]?), (.webapp.development.hostnames[]?)' catalog/*.yaml | sort | uniq -d)
+          dup=$(yq -N -r '(.static.hostnames[]?), (.webapp.production.hostnames[]?), (.webapp.development.hostnames[]?), (.webapp.production.front_hostnames[]?), (.webapp.development.front_hostnames[]?)' catalog/*.yaml | sort | uniq -d)
           [ -z "$dup" ] || fail catalog "hostnames repetidos: $dup"
-          dup=$(yq -N -r '.static.pages_project | select(. != null)' catalog/*.yaml | sort | uniq -d)
+          dup=$(yq -N -r '(.static.pages_project, .webapp.front.pages_project) | select(. != null)' catalog/*.yaml | sort | uniq -d)
           [ -z "$dup" ] || fail catalog "pages_project repetidos: $dup"
           dup=$(yq -N -r '.webapp.service | select(. != null)' catalog/*.yaml | sort | uniq -d)
           [ -z "$dup" ] || fail catalog "webapp.service repetidos: $dup"

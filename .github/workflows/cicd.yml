@@ -6,8 +6,9 @@
 #             Repo sin entrada en el catálogo: no se hace nada (no-action).
 #   comunes   gitflow (solo PR) + gitleaks/trivy, para cualquier tipo.
 #   static    checks HTML/CSS + Cloudflare Pages (PR/develop: preview; main: producción).
-#   webapp    checks del runtime + imagen (trivy, cosign) + Cloud Run con infra/webapp
-#             (PR: solo build; develop: <service>-dev; main: <service> + tag vVERSION).
+#   webapp    checks del runtime + imagen (trivy, cosign) + migraciones + Cloud Run con
+#             infra/webapp (PR: solo build; develop: <service>-dev; main: <service> + tag
+#             vVERSION) y, con webapp.front, el front en Pages tras la API (job static-deploy).
 #   ok        check único que exigen los rulesets.
 #
 # Etapas por evento (static | webapp):
@@ -56,6 +57,13 @@ jobs:
       service: ${{ steps.stage.outputs.service }}
       runtime: ${{ steps.catalog.outputs.runtime }}
       public: ${{ steps.catalog.outputs.public }}
+      context: ${{ steps.catalog.outputs.context }}
+      health_path: ${{ steps.catalog.outputs.health_path }}
+      migrate: ${{ steps.catalog.outputs.migrate }}
+      has_front: ${{ steps.catalog.outputs.has_front }}
+      build_dir: ${{ steps.catalog.outputs.build_dir }}
+      front_env: ${{ steps.stage.outputs.front_env }}
+      site_url: ${{ steps.stage.outputs.site_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,6 +114,7 @@ jobs:
           {
             echo "type=$type"
             if [ "$type" = static ]; then
+              echo "build_dir=."
               echo "site_dir=$(yq -r '.static.site_dir // "public"' "$f")"
               echo "build_cmd=$(yq -r '.static.build_cmd // ""' "$f")"
               echo "node_version=$(yq -r '.static.node_version // "22"' "$f")"
@@ -118,6 +127,17 @@ jobs:
               echo "runtime=$(yq -r '.webapp.runtime // "go"' "$f")"
               echo "node_version=$(yq -r '.webapp.node_version // "22"' "$f")"
               echo "public=$(yq -r '.webapp.public == true' "$f")"
+              echo "context=$(yq -r '.webapp.context // "."' "$f")"
+              echo "health_path=$(yq -r '.webapp.health_path // "/health"' "$f")"
+              echo "migrate=$(yq -r '.webapp.migrate // ""' "$f")"
+              echo "has_front=$(yq -r '.webapp.front != null' "$f")"
+              if [ "$(yq -r '.webapp.front != null' "$f")" = true ]; then
+                d=$(yq -r '.webapp.front.dir // "."' "$f")
+                echo "build_dir=$d"
+                echo "site_dir=$d/$(yq -r '.webapp.front.site_dir // "dist"' "$f")"
+                echo "build_cmd=$(yq -r '.webapp.front.build_cmd // "npm run build"' "$f")"
+                echo "pages_project=$(yq -r '.webapp.front.pages_project' "$f")"
+              fi
             fi
           } >> "$GITHUB_OUTPUT"
           { echo "## $GITHUB_REPOSITORY: \`$type\` (platform@${{ steps.ref.outputs.ref }})"; echo '```yaml'; cat "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
@@ -149,6 +169,22 @@ jobs:
           echo "environment=$env" >> "$GITHUB_OUTPUT"
           echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
           echo "etapa: **$env** (deploy=$deploy)" >> "$GITHUB_STEP_SUMMARY"
+
+          # Front de una webapp: variables del build (VITE_*...) con {api_url} y
+          # {front_url} del entorno; una PR construye con las de desarrollo.
+          f=".platform/catalog/${GITHUB_REPOSITORY#*/}.yaml"
+          if [ "$TYPE" = webapp ] && [ "$(yq -r '.webapp.front != null' "$f")" = true ]; then
+            e=development; [ "$env" = production ] && e=production
+            api="https://$(yq -r ".webapp.$e.hostnames[0]" "$f")"
+            front="https://$(yq -r ".webapp.$e.front_hostnames[0]" "$f")"
+            echo "site_url=$front" >> "$GITHUB_OUTPUT"
+            {
+              echo "front_env<<EOF_FRONT_ENV"
+              yq -r '.webapp.front.env // {} | to_entries[] | .key + "=" + .value' "$f" \
+                | sed -e "s#{api_url}#$api#g" -e "s#{front_url}#$front#g"
+              echo "EOF_FRONT_ENV"
+            } >> "$GITHUB_OUTPUT"
+          fi
 
   # ---------- comunes ----------
 
@@ -254,15 +290,19 @@ jobs:
             [ -f "$SITE_DIR$path" ] || echo "::warning file=$html::falta $SITE_DIR$path (referenciado en $html)"
           done < <(grep -rHoE '(src|href)="/[^"/][^"]*"' --include='*.html' "$SITE_DIR" | sed -E 's/:(src|href)="/:/; s/"$//')
 
+  # Sitio static, o front de una webapp (webapp.front) después de su API: el
+  # front nuevo nunca llega antes que la API que necesita.
   static-deploy:
     # Nombre fijo: con el job saltado, GitHub muestra la expresión sin evaluar.
     name: static (pages)
-    needs: [resolve, gitflow, security, static-checks]
+    needs: [resolve, gitflow, security, static-checks, webapp-deploy]
     # gitflow solo corre en PR: skipped cuenta como bueno.
     if: >-
-      !cancelled() && needs.resolve.outputs.type == 'static' && needs.resolve.outputs.deploy == 'true'
-      && needs.security.result == 'success' && needs.static-checks.result == 'success'
+      !cancelled() && needs.resolve.outputs.deploy == 'true'
+      && needs.security.result == 'success'
       && contains(fromJSON('["success","skipped"]'), needs.gitflow.result)
+      && ((needs.resolve.outputs.type == 'static' && needs.static-checks.result == 'success')
+        || (needs.resolve.outputs.has_front == 'true' && needs.webapp-deploy.result == 'success'))
     runs-on: ubuntu-latest
     # Aprobación y secrets de Cloudflare: environment del repo caller.
     environment: ${{ needs.resolve.outputs.environment }}
@@ -275,7 +315,9 @@ jobs:
       BRANCH: ${{ github.head_ref || github.ref_name }}
       PROJECT: ${{ needs.resolve.outputs.pages_project }}
       SITE_DIR: ${{ needs.resolve.outputs.site_dir }}
+      BUILD_DIR: ${{ needs.resolve.outputs.build_dir }}
       BUILD_CMD: ${{ needs.resolve.outputs.build_cmd }}
+      FRONT_ENV: ${{ needs.resolve.outputs.front_env }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -284,14 +326,15 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ needs.resolve.outputs.node_version }}
-          cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || '' }}
 
       - name: build
         if: env.BUILD_CMD != ''
+        working-directory: ${{ needs.resolve.outputs.build_dir }}
         run: |
+          while IFS= read -r kv; do [ -n "$kv" ] && export "${kv?}"; done <<< "$FRONT_ENV"
           npm ci --no-audit --no-fund
           bash -euo pipefail -c "$BUILD_CMD"
-          test -d "$SITE_DIR" || { echo "::error::el build no ha generado $SITE_DIR"; exit 1; }
+          test -d "$GITHUB_WORKSPACE/$SITE_DIR" || { echo "::error::el build no ha generado $SITE_DIR"; exit 1; }
 
       - name: wrangler pages deploy
         id: deploy
@@ -323,7 +366,8 @@ jobs:
 
       - name: smoke test
         env:
-          URLS: ${{ steps.deploy.outputs.url }} ${{ needs.resolve.outputs.environment == 'production' && needs.resolve.outputs.production_url || '' }}
+          # Dominio propio: el de producción de un static, o el del entorno del front de una webapp.
+          URLS: ${{ steps.deploy.outputs.url }} ${{ needs.resolve.outputs.environment == 'production' && needs.resolve.outputs.type == 'static' && needs.resolve.outputs.production_url || '' }} ${{ needs.resolve.outputs.site_url }}
         run: |
           for u in $URLS; do
             ok=0
@@ -380,7 +424,11 @@ jobs:
           node-version: ${{ needs.resolve.outputs.node_version }}
       - name: npm ci + lint + test + build
         if: needs.resolve.outputs.runtime == 'node'
+        env:
+          FRONT_ENV: ${{ needs.resolve.outputs.front_env }}
         run: |
+          # Variables del build del front (webapp.front.env), como en el deploy.
+          while IFS= read -r kv; do [ -n "$kv" ] && export "${kv?}"; done <<< "$FRONT_ENV"
           mapfile -t dirs < <(git ls-files '*package-lock.json' 'package-lock.json' | xargs -rn1 dirname | sort -u)
           [ "${#dirs[@]}" -gt 0 ] || { echo "::error::runtime node sin ningún package-lock.json"; exit 1; }
           for d in "${dirs[@]}"; do
@@ -402,6 +450,7 @@ jobs:
     env:
       SERVICE: ${{ needs.resolve.outputs.service }}
       DEPLOY: ${{ needs.resolve.outputs.deploy }}
+      CONTEXT: ${{ needs.resolve.outputs.context }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -414,7 +463,7 @@ jobs:
         # paquete y los pushes de develop no desplazan las imágenes de producción.
         run: |
           echo "IMAGE_REF=$DOCKER_REPO/${SERVICE:-pr}:${GITHUB_SHA::12}" >> "$GITHUB_ENV"
-          docker build --provenance=false -t "$DOCKER_REPO/${SERVICE:-pr}:${GITHUB_SHA::12}" .
+          docker build --provenance=false -t "$DOCKER_REPO/${SERVICE:-pr}:${GITHUB_SHA::12}" "$CONTEXT"
 
       - name: trivy image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -497,6 +546,28 @@ jobs:
           workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
           service_account: ${{ env.GH_DEPLOYER_SA }}
 
+      # webapp.migrate: antes del apply, así la revisión nueva arranca con el esquema
+      # que necesita. Si falla, no se despliega y sigue la revisión anterior.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.resolve.outputs.migrate != '' && needs.resolve.outputs.runtime == 'node'
+        with:
+          node-version: ${{ needs.resolve.outputs.node_version }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        if: needs.resolve.outputs.migrate != ''
+
+      - name: migraciones
+        if: needs.resolve.outputs.migrate != ''
+        working-directory: ${{ needs.resolve.outputs.context }}
+        env:
+          MIGRATE: ${{ needs.resolve.outputs.migrate }}
+        run: |
+          DATABASE_URL=$(gcloud secrets versions access latest --secret "$SERVICE-database-url-direct")
+          echo "::add-mask::$DATABASE_URL"
+          export DATABASE_URL
+          [ "${{ needs.resolve.outputs.runtime }}" = node ] && npm ci --no-audit --no-fund
+          bash -euo pipefail -c "$MIGRATE"
+
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
           tofu_version: ${{ env.TOFU_VERSION }}
@@ -518,19 +589,19 @@ jobs:
           echo "url: $(tofu output -raw service_url)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: smoke test
-        # La revisión solo queda lista si /health pasó la startup probe; esto
+        # La revisión solo queda lista si health_path pasó la startup probe; esto
         # comprueba además DNS, certificado y mapping. Sin public aún no hay
         # acceso público que probar.
         if: needs.resolve.outputs.public == 'true'
         env:
-          URL: ${{ steps.apply.outputs.public_url }}
+          URL: ${{ steps.apply.outputs.public_url }}${{ needs.resolve.outputs.health_path }}
         run: |
           for _ in $(seq 1 12); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$URL/health" || true)
-            [ "$code" = "200" ] && { echo "$URL/health → 200"; exit 0; }
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$URL" || true)
+            [ "$code" = "200" ] && { echo "$URL → 200"; exit 0; }
             sleep 10
           done
-          echo "::error::$URL/health no responde 200 tras el deploy (último código: $code)"; exit 1
+          echo "::error::$URL no responde 200 tras el deploy (último código: $code)"; exit 1
 
       - name: tag vVERSION
         # Solo producción y solo si no existe: un hotfix sin cambio de VERSION no re-etiqueta.

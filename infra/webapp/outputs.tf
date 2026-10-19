@@ -11,3 +11,7 @@ output "public_url" {
 output "public" {
   value = local.svc.public
 }
+
+output "health_path" {
+  value = local.svc.health_path
+}
