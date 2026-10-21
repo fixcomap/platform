@@ -392,9 +392,10 @@ jobs:
           # añade el apply de dns posterior al primer deploy) y la API no es accesible.
           URLS: ${{ steps.deploy.outputs.url }} ${{ needs.resolve.outputs.environment == 'production' && needs.resolve.outputs.type == 'static' && needs.resolve.outputs.production_url || '' }} ${{ needs.resolve.outputs.public == 'true' && needs.resolve.outputs.site_url || '' }}
         run: |
+          # Hasta 5 min: el *.pages.dev de un proyecto recién creado tarda en resolver.
           for u in $URLS; do
             ok=0
-            for _ in $(seq 1 12); do
+            for _ in $(seq 1 30); do
               code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$u/" || true)
               [ "$code" = "200" ] && { echo "$u → 200"; ok=1; break; }
               sleep 10

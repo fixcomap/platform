@@ -27,5 +27,6 @@ webapp:
     hostnames: [api-jjpachangas.fixcomap.com]
     front_hostnames: [jjpachangas.fixcomap.com]
   development:
+    public: true               # producción sigue privada hasta su primer deploy
     hostnames: [api-jjpachangas.dev.fixcomap.com]
     front_hostnames: [jjpachangas.dev.fixcomap.com]
