@@ -1,0 +1,31 @@
+# Juancito Pachangas: partidos con link para anotarse por WhatsApp. Front React en
+# Cloudflare Pages y API Node/Express en Cloud Run, Postgres en Neon.
+repo: fixcomap/jjpachangas
+type: webapp
+webapp:
+  service: jjpachangas         # API: jjpachangas (producción) y jjpachangas-dev
+  runtime: node
+  node_version: "22"
+  context: apps/api
+  health_path: /salud          # hace SELECT 1: el deploy falla si la API no ve la base
+  # Alta en dos releases: público por entorno tras su primer deploy.
+  public: false
+  monitoring: true
+  secrets: [DATABASE_URL, SESSION_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET]
+  env:
+    FRONT_URL: "{front_url}"
+    API_URL: "{api_url}"
+  migrate: npm run migrar
+  front:
+    dir: apps/web
+    build_cmd: npm run build
+    site_dir: dist
+    pages_project: fixcomap-jjpachangas
+    env:
+      VITE_API_URL: "{api_url}"
+  production:
+    hostnames: [api-jjpachangas.fixcomap.com]
+    front_hostnames: [jjpachangas.fixcomap.com]
+  development:
+    hostnames: [api-jjpachangas.dev.fixcomap.com]
+    front_hostnames: [jjpachangas.dev.fixcomap.com]
