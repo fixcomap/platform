@@ -9,6 +9,7 @@ y GitHub Actions por Workload Identity Federation: sin claves JSON.
 | Repo | Tipo | Producción | Desarrollo / preview |
 |---|---|---|---|
 | [`plantilla`](https://github.com/fixcomap/plantilla) | webapp (Go, Cloud Run) | plantilla.fixcomap.com | plantilla.dev.fixcomap.com |
+| [`jjpachangas`](https://github.com/fixcomap/jjpachangas) | webapp (React + Node, Cloud Run) | jjpachangas.fixcomap.com (pendiente) | jjpachangas.dev.fixcomap.com (pendiente) |
 | [`reservas`](https://github.com/fixcomap/reservas) | webapp (React + Node, Cloud Run) | reservas.fixcomap.com (pendiente) | reservas.dev.fixcomap.com (pendiente) |
 | [`web`](https://github.com/fixcomap/web) | static (Cloudflare Pages) | fixcomap.com, www | develop.fixcomap-landing.pages.dev |
 | [`agustin`](https://github.com/fixcomap/agustin) | static | agustin.fixcomap.com | develop.fixcomap-agustin.pages.dev |
