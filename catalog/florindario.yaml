@@ -1,0 +1,31 @@
+# Florindario: calendario de trabajo para horarios rotativos. Front React en
+# Cloudflare Pages y API Node/Express en Cloud Run, Postgres en Neon.
+repo: fixcomap/florindario
+type: webapp
+webapp:
+  service: florindario         # API: florindario (producción) y florindario-dev
+  runtime: node
+  node_version: "22"
+  context: apps/api
+  health_path: /salud
+  # Alta en dos releases: público por entorno tras su primer deploy.
+  public: false
+  monitoring: true
+  secrets: [DATABASE_URL, SESSION_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET]
+  env:
+    FRONT_URL: "{front_url}"
+    API_URL: "{api_url}"
+  migrate: npm run migrar
+  front:
+    dir: apps/web
+    build_cmd: npm run build
+    site_dir: dist
+    pages_project: fixcomap-florindario
+    env:
+      VITE_API_URL: "{api_url}"
+  production:
+    hostnames: [api-florindario.fixcomap.com]
+    front_hostnames: [florindario.fixcomap.com]
+  development:
+    hostnames: [api-florindario.dev.fixcomap.com]
+    front_hostnames: [florindario.dev.fixcomap.com]
