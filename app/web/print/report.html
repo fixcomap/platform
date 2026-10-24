@@ -14,6 +14,8 @@
   .bar { display: flex; gap: 8px; margin-bottom: 14px; }
   .bar button, .bar a { padding: 10px 14px; border-radius: 8px; border: 0; background: #3b2f8f; color: #fff; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
   .bar a { background: transparent; color: #3b2f8f; border: 1px solid #ddd; }
+  .bar a.pdf { background: #3b2f8f; color: #fff; border: 0; }
+  .bar button { background: transparent; color: #3b2f8f; border: 1px solid #ddd; }
   header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #3b2f8f; padding-bottom: 6px; margin-bottom: 10px; }
   h1 { font: 700 18px "Open Sans", sans-serif; margin: 0; color: #3b2f8f; }
   h2 { font-size: 13px; margin: 14px 0 6px; color: #3b2f8f; }
@@ -38,7 +40,10 @@
 <body>
 {{$d := .Data}}
 <div class="bar">
-  <button type="button" onclick="window.print()">Guardar como PDF / imprimir</button>
+  <!-- PDF generado en el servidor: funciona también en la app instalada en el
+       iPhone, donde window.print() no hace nada. -->
+  <a class="pdf" href="/t/{{.Team.ID}}/players/report.pdf" target="_blank" rel="noopener">Descargar PDF</a>
+  <button type="button" onclick="window.print()">Imprimir</button>
   <a href="/t/{{.Team.ID}}/players">← Volver</a>
 </div>
 <header>
