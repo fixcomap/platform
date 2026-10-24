@@ -299,6 +299,7 @@ func (a *app) routes(mux *http.ServeMux) {
 	t("GET /t/{team}/players", a.playersPage)
 	t("POST /t/{team}/players", a.savePlayer)
 	t("GET /t/{team}/players/report", a.playersReport)
+	t("GET /t/{team}/players/report.pdf", a.playersReportPDF)
 	t("GET /t/{team}/players/{player}", a.playerPage)
 	t("POST /t/{team}/players/{player}", a.savePlayer)
 	t("GET /t/{team}/players/{player}/edit", a.playerEditPage)
