@@ -24,9 +24,10 @@ webapp:
     env:
       VITE_API_URL: "{api_url}"
   production:
+    public: true
     hostnames: [api-florindario.fixcomap.com]
     front_hostnames: [florindario.fixcomap.com]
   development:
-    public: true               # producción sigue privada hasta su primer deploy
+    public: true
     hostnames: [api-florindario.dev.fixcomap.com]
     front_hostnames: [florindario.dev.fixcomap.com]
