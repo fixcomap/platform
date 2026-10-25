@@ -1,0 +1,14 @@
+{
+  "github_owned_allowed": true,
+  "verified_allowed": false,
+  "patterns_allowed": [
+    "fixcomap/*",
+    "aquasecurity/trivy-action@*",
+    "bridgecrewio/checkov-action@*",
+    "golangci/golangci-lint-action@*",
+    "google-github-actions/*",
+    "opentofu/setup-opentofu@*",
+    "sigstore/cosign-installer@*",
+    "terraform-linters/setup-tflint@*"
+  ]
+}
