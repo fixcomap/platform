@@ -142,6 +142,7 @@ Campos opcionales de `webapp` (ver `catalog/reservas.yaml`):
 | `secrets` | variables secretas: un secreto `<servicio>-<variable-en-kebab>` por entorno (`reservas-mp-access-token`, `reservas-dev-mp-access-token`); sin `secrets`, contrato original (`APP_CONFIG` + `DATABASE_URL_FILE`) |
 | `env` | variables sin secretos; `{api_url}` y `{front_url}` se sustituyen por el primer hostname del entorno |
 | `migrate` | comando que corre en `context` antes de cada deploy, con `DATABASE_URL` = secreto `<servicio>-database-url-direct` |
+| `development.restricted` | `true`: desarrollo solo para los emails del secreto `dev-acceso-emails` (separados por coma): el front y sus previews quedan tras Cloudflare Access y la API recibe `ACCESO_EMAILS` para rechazar el login de cualquier otro |
 | `front` | front estático en Cloudflare Pages (`dir`, `build_cmd`, `site_dir`, `pages_project`, `env` del build); se despliega después de la API, en `develop` (rama `develop`, `front_hostnames` de desarrollo) y en `main` |
 
 Con `front`, el proyecto de Pages lo crea su primer deploy: `infra/dns` lo importa, con sus dominios

@@ -73,6 +73,10 @@ jobs:
                 # Variables de entorno: el nombre del secreto sale de ellas.
                 bad=$(yq -r '(.webapp.secrets // [])[], ((.webapp.env // {}) | keys)[]' "$f" | grep -Ev '^[A-Z][A-Z0-9_]*$' || true)
                 [ -z "$bad" ] || fail "$f" "webapp.secrets/env: nombres de variable inválidos: $bad"
+                [ "$(yq -r '.webapp.production.restricted // false' "$f")" = false ] || fail "$f" "webapp.production.restricted: solo desarrollo puede restringirse"
+                if [ "$(yq -r '.webapp.development.restricted // false' "$f")" = true ] && [ "$(yq -r '.webapp.front != null' "$f")" != true ]; then
+                  fail "$f" "webapp.development.restricted necesita front (Cloudflare Access protege el front)"
+                fi
                 if [ "$(yq -r '.webapp.front != null' "$f")" = true ]; then
                   [ "$(yq -r '.webapp.front.pages_project // ""' "$f")" != "" ] || fail "$f" "falta webapp.front.pages_project"
                   for e in production development; do
