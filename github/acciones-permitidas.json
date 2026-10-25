@@ -4,6 +4,7 @@
   "patterns_allowed": [
     "fixcomap/*",
     "aquasecurity/trivy-action@*",
+    "aquasecurity/setup-trivy@*",
     "bridgecrewio/checkov-action@*",
     "golangci/golangci-lint-action@*",
     "google-github-actions/*",
