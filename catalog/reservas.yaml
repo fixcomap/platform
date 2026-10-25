@@ -33,6 +33,7 @@ webapp:
     hostnames: [api-reservas.fixcomap.com]
     front_hostnames: [reservas.fixcomap.com]
   development:
+    restricted: true           # solo los emails de dev-acceso-emails (Cloudflare Access + API)
     public: true               # producción sigue privada hasta su primer deploy
     hostnames: [api-reservas.dev.fixcomap.com]
     front_hostnames: [reservas.dev.fixcomap.com]

@@ -140,6 +140,20 @@ resource "google_cloud_run_v2_service" "service" {
         }
       }
 
+      # webapp.development.restricted: emails que pueden entrar (dev-acceso-emails).
+      dynamic "env" {
+        for_each = local.svc.restricted ? ["dev-acceso-emails"] : []
+        content {
+          name = "ACCESO_EMAILS"
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
+          }
+        }
+      }
+
       # OpenTelemetry → Grafana Cloud por OTLP/HTTP con las variables estándar
       # del SDK: la app no conoce el backend. Endpoint vacío = no exporta.
       env {
