@@ -51,6 +51,7 @@ locals {
     ]...),
     { for k, w in local.webapps : "${k}:otlp" => { webapp = k, secret = google_secret_manager_secret.otlp_headers.id } },
     { for id, x in local.webapp_env_secrets : "${x.service}:${x.variable}" => { webapp = x.webapp, secret = google_secret_manager_secret.webapp_env[id].id } },
+    { for s, e in local.webapp_services : "${s}:acceso" => { webapp = e.webapp, secret = google_secret_manager_secret.dev_acceso.id } if e.restricted },
   )
 }
 
@@ -196,6 +197,29 @@ resource "google_secret_manager_secret_iam_member" "webapp_runtime_access" {
   secret_id = each.value.secret
   role      = "roles/secretmanager.secretAccessor"
   member    = google_service_account.webapp_runtime[each.value.webapp].member
+}
+
+# Emails que pueden entrar a los entornos de desarrollo restringidos, separados
+# por coma: lo lee infra/dns (Cloudflare Access del front) y cada API de dev
+# (ACCESO_EMAILS). Compartido por todas las webapps; el valor se carga a mano.
+resource "google_secret_manager_secret" "dev_acceso" {
+  secret_id = "dev-acceso-emails"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.platform]
+}
+
+# Sin "@": infra/dns no crea Access y las APIs no restringen hasta el valor real.
+resource "google_secret_manager_secret_version" "dev_acceso_placeholder" {
+  secret                 = google_secret_manager_secret.dev_acceso.id
+  secret_data_wo         = "placeholder"
+  secret_data_wo_version = "1"
+
+  # Una vez cargado el valor real, el placeholder se desactiva a mano: no reactivarlo.
+  lifecycle {
+    ignore_changes = [enabled]
+  }
 }
 
 # ---------- exposición pública (public: true) ----------

@@ -6,6 +6,10 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 5.25"
     }
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 8.3"
+    }
   }
 
   backend "gcs" {}
@@ -17,3 +21,8 @@ terraform {
 # "platform": solo un job aprobado por una persona puede leerla, igual que
 # tf-platform. Token con permiso Zone > DNS > Edit limitado a la zona fixcomap.com.
 provider "cloudflare" {}
+
+# Solo para leer dev-acceso-emails (access.tf); proyecto de las credenciales del job.
+provider "google" {
+  project = var.project_id
+}
