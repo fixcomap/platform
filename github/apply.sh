@@ -5,8 +5,11 @@
 #   rulesets/main-reviews.json         1 aprobación en main; bypass solo para admin
 #                                      (se salta reviewers, nunca checks)
 #   checks/<repo>.json                 checks obligatorios (default.json: "cicd / ok")
-#   environment preview | development  sin aprobación ni restricción de rama (static | webapp)
+#   environment preview                sin aprobación ni restricción de rama (static: previews de PR)
+#   environment development            sin aprobación; solo despliega desde develop (webapp)
 #   environment production             solo si falta: aprobación del admin, ramas protegidas
+#   acciones-permitidas.json           solo acciones de GitHub, de fixcomap y las que usa el pipeline
+#   PR de forks                        sus workflows esperan aprobación siempre (no solo la primera vez)
 #
 # Idempotente: crea o actualiza cada ruleset por nombre. Un production que ya
 # existe no se toca (sus reviewers son decisión de cada repo).
@@ -54,15 +57,30 @@ for repo in "$@"; do
     fi
   done
 
+  # Acciones: solo las de la lista (el pipeline y sus pasos); el resto no corre.
+  write PUT "repos/$ORG/$repo/actions/permissions" '{"enabled": true, "allowed_actions": "selected"}'
+  write PUT "repos/$ORG/$repo/actions/permissions/selected-actions" "$(cat "$DIR/acciones-permitidas.json")"
+  echo "$repo: acciones limitadas a acciones-permitidas.json"
+  # Un PR desde un fork no ejecuta nada hasta que un admin lo aprueba.
+  write PUT "repos/$ORG/$repo/actions/permissions/fork-pr-contributor-approval" '{"approval_policy": "all_external_contributors"}'
+  echo "$repo: workflows de PR de forks con aprobación siempre"
+
   # platform no tiene previews ni producción propia: su único environment es "platform".
   [ "$repo" != platform ] || continue
 
   # Entorno sin protección según el tipo del catálogo: previews de Pages (static)
   # o el servicio <service>-dev (webapp).
-  open_env=preview
-  grep -q '^type: webapp' "$DIR/../catalog/$repo.yaml" 2>/dev/null && open_env=development
-  write PUT "repos/$ORG/$repo/environments/$open_env" '{"wait_timer": 0, "reviewers": [], "deployment_branch_policy": null}'
-  echo "$repo: environment $open_env abierto"
+  if grep -q '^type: webapp' "$DIR/../catalog/$repo.yaml" 2>/dev/null; then
+    # development solo desde develop: otra rama no puede usar sus secretos.
+    write PUT "repos/$ORG/$repo/environments/development" '{"wait_timer": 0, "reviewers": [], "deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}'
+    if [ -n "${DRY_RUN:-}" ] || ! gh api "repos/$ORG/$repo/environments/development/deployment-branch-policies" --jq '.branch_policies[].name' | grep -qx develop; then
+      write POST "repos/$ORG/$repo/environments/development/deployment-branch-policies" '{"name": "develop", "type": "branch"}'
+    fi
+    echo "$repo: environment development sin aprobación, solo desde develop"
+  else
+    write PUT "repos/$ORG/$repo/environments/preview" '{"wait_timer": 0, "reviewers": [], "deployment_branch_policy": null}'
+    echo "$repo: environment preview abierto"
+  fi
 
   # production solo se crea si falta (sus reviewers son decisión de cada repo).
   # Sin esto, el primer deploy a main lo crearía GitHub sin aprobación.
