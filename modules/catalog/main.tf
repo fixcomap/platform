@@ -52,6 +52,10 @@ locals {
         config      = "${w.service}-config"
         database    = "${w.service}-database-url"
         migrate     = w.migrate
+        # webapp.development.restricted: dev solo para los emails del secreto
+        # compartido dev-acceso-emails (front tras Cloudflare Access y la API
+        # con ACCESO_EMAILS). Producción nunca.
+        restricted = e == "development" && try(w[e].restricted, false)
         # {api_url} y {front_url}: primer hostname de la API y del front en este entorno.
         env = {
           for name, value in w.env : name => replace(replace(value,
@@ -105,6 +109,16 @@ output "webapps" {
 output "webapp_services" {
   description = "Servicio Cloud Run => webapp, entorno, hostnames, variables y nombres derivados."
   value       = local.webapp_services
+}
+
+output "restricted_fronts" {
+  description = "Webapps con desarrollo restringido => hostnames del front de dev y proyecto de Pages (sus previews también)."
+  value = {
+    for k, w in local.webapps : k => {
+      hostnames     = try(w.development.front_hostnames, [])
+      pages_project = try(w.front.pages_project, "")
+    } if try(w.development.restricted, false)
+  }
 }
 
 output "webapp_hostnames" {
