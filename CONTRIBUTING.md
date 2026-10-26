@@ -100,7 +100,7 @@ entrada en el catálogo no hace nada.
 
 | Evento | static |
 |---|---|
-| PR | gitflow, gitleaks + trivy, checks HTML/CSS, preview `<rama>.<proyecto>.pages.dev` |
+| PR | gitflow, gitleaks + trivy, checks HTML/CSS |
 | push `develop` | checks + preview `develop.<proyecto>.pages.dev` |
 | push `main` | checks + producción (environment `production`, aprobación) + smoke test del dominio |
 
