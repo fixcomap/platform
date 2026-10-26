@@ -48,8 +48,11 @@ resource "cloudflare_zero_trust_access_application" "dev" {
   auto_redirect_to_identity = true
   destinations = concat(
     [for h in each.value.hostnames : { type = "public", uri = h }],
-    [{ type = "public", uri = "*.${each.value.pages_project}.pages.dev" }],
-    each.value.apex ? [{ type = "public", uri = "${each.value.pages_project}.pages.dev" }] : [],
+    # *.pages.dev solo con el proyecto creado: Cloudflare rechaza un dominio que no es de la cuenta.
+    contains(local.existing_pages, each.value.pages_project) ? concat(
+      [{ type = "public", uri = "*.${each.value.pages_project}.pages.dev" }],
+      each.value.apex ? [{ type = "public", uri = "${each.value.pages_project}.pages.dev" }] : [],
+    ) : [],
   )
   policies = [{ id = cloudflare_zero_trust_access_policy.dev[0].id, precedence = 1 }]
 }
