@@ -24,9 +24,10 @@ webapp:
     env:
       VITE_API_URL: "{api_url}"
   production:
+    public: true
     hostnames: [api-jjpachangas.fixcomap.com]
     front_hostnames: [jjpachangas.fixcomap.com]
   development:
-    public: true               # producción sigue privada hasta su primer deploy
+    public: true
     hostnames: [api-jjpachangas.dev.fixcomap.com]
     front_hostnames: [jjpachangas.dev.fixcomap.com]
