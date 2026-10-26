@@ -371,7 +371,7 @@ jobs:
         working-directory: ${{ needs.resolve.outputs.build_dir }}
         run: |
           while IFS= read -r kv; do [ -n "$kv" ] && export "${kv?}"; done <<< "$FRONT_ENV"
-          npm ci --no-audit --no-fund
+          if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; fi
           bash -euo pipefail -c "$BUILD_CMD"
           test -d "$GITHUB_WORKSPACE/$SITE_DIR" || { echo "::error::el build no ha generado $SITE_DIR"; exit 1; }
 
