@@ -7,8 +7,6 @@
 # entorno es public (alta en dos releases): hasta entonces lo crea gh-deployer,
 # solo desde la rama de ese entorno.
 locals {
-  webapp_ref = { production = "main", development = "develop" }
-
   # Servicio => webapp, entorno y si ya despliega con su propia identidad.
   webapp_deploy = {
     for s, e in local.webapp_services : s => {
