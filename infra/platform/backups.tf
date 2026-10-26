@@ -1,7 +1,6 @@
 # Backups de las bases de producción de cada webapp (backups.yml): pg_dump
 # diario a un bucket propio. db-backups lee solo esas cadenas y solo puede
-# crear objetos: ni sobrescribir ni borrar, así que un pipeline comprometido
-# no puede eliminar los backups. Los borra la retención del bucket.
+# crear objetos; la retención la aplica el bucket.
 locals {
   # Producción: la cadena directa de webapp.migrate o, en el contrato original,
   # <service>-database-url (backups.yml quita el -pooler del host).

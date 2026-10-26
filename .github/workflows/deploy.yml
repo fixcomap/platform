@@ -231,7 +231,7 @@ jobs:
           GRAFANA_AUTH: ${{ secrets.GRAFANA_AUTH }}
           TF_VAR_grafana_url: ${{ vars.GRAFANA_URL }}
           TF_VAR_stack_slug: ${{ vars.GRAFANA_STACK_SLUG }}
-          TF_VAR_alert_email: ${{ vars.GRAFANA_ALERT_EMAIL }}
+          TF_VAR_alert_email: ${{ secrets.GRAFANA_ALERT_EMAIL }}
         run: |
           tofu init -input=false -backend-config="bucket=$STATE_BUCKET" -backend-config="prefix=observability"
           tofu plan -input=false -no-color -out=tfplan
@@ -309,6 +309,7 @@ jobs:
         env:
           TF_VAR_image: ${{ env.IMAGE_DIGEST }}
           TF_VAR_otlp_endpoint: ${{ vars.OTLP_ENDPOINT }} # var de repo (no es secreto); vacía = sin telemetría
+          TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
         run: |
           tofu init -input=false -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=app"
           tofu plan -input=false -no-color -out=tfplan
