@@ -12,7 +12,8 @@ locals {
   dev_acceso_emails = length(data.google_secret_manager_secret_version.dev_acceso) == 0 ? [] : [
     for e in split(",", data.google_secret_manager_secret_version.dev_acceso[0].secret_data) : lower(trimspace(e)) if strcontains(e, "@")
   ]
-  restricted_fronts = length(local.dev_acceso_emails) > 0 ? module.catalog.restricted_fronts : {}
+  # El secreto es sensible, pero si hay emails o no, no: for_each no admite valores sensibles.
+  restricted_fronts = nonsensitive(length(local.dev_acceso_emails) > 0) ? module.catalog.restricted_fronts : {}
 }
 
 resource "cloudflare_zero_trust_access_policy" "dev" {
