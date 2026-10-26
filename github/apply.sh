@@ -5,7 +5,7 @@
 #   rulesets/main-reviews.json         1 aprobación en main; bypass solo para admin
 #                                      (se salta reviewers, nunca checks)
 #   checks/<repo>.json                 checks obligatorios (default.json: "cicd / ok")
-#   environment preview                sin aprobación ni restricción de rama (static: previews de PR)
+#   environment preview                sin aprobación, solo desde develop (static)
 #   environment development            sin aprobación; solo despliega desde develop (webapp)
 #   environment production             solo si falta: aprobación del admin, ramas protegidas
 #   acciones-permitidas.json           solo acciones de GitHub, de fixcomap y las que usa el pipeline
@@ -78,8 +78,12 @@ for repo in "$@"; do
     fi
     echo "$repo: environment development sin aprobación, solo desde develop"
   else
-    write PUT "repos/$ORG/$repo/environments/preview" '{"wait_timer": 0, "reviewers": [], "deployment_branch_policy": null}'
-    echo "$repo: environment preview abierto"
+    # preview solo desde develop: una rama cualquiera no puede usar el token de Pages.
+    write PUT "repos/$ORG/$repo/environments/preview" '{"wait_timer": 0, "reviewers": [], "deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}'
+    if [ -n "${DRY_RUN:-}" ] || ! gh api "repos/$ORG/$repo/environments/preview/deployment-branch-policies" --jq '.branch_policies[].name' | grep -qx develop; then
+      write POST "repos/$ORG/$repo/environments/preview/deployment-branch-policies" '{"name": "develop", "type": "branch"}'
+    fi
+    echo "$repo: environment preview sin aprobación, solo desde develop"
   fi
 
   # production solo se crea si falta (sus reviewers son decisión de cada repo).

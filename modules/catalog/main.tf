@@ -25,12 +25,12 @@ locals {
       # <service>-config y <service>-database-url compartidos por los dos entornos.
       # Con webapp.secrets, en su lugar una variable de entorno por secreto y
       # entorno: <servicio>-<variable en kebab-case>.
-      legacy     = try(v.webapp.secrets, null) == null
-      secrets    = try(v.webapp.secrets, [])
-      env        = try(v.webapp.env, {})
-      migrate    = try(v.webapp.migrate, "")
-      front      = try(v.webapp.front, null)
-      production = v.webapp.production
+      legacy      = try(v.webapp.secrets, null) == null
+      secrets     = try(v.webapp.secrets, [])
+      env         = try(v.webapp.env, {})
+      migrate     = try(v.webapp.migrate, "")
+      front       = try(v.webapp.front, null)
+      production  = v.webapp.production
       development = v.webapp.development
     } if v.type == "webapp"
   }
@@ -52,10 +52,10 @@ locals {
         config      = "${w.service}-config"
         database    = "${w.service}-database-url"
         migrate     = w.migrate
-        # webapp.development.restricted: dev solo para los emails del secreto
-        # compartido dev-acceso-emails (front tras Cloudflare Access y la API
-        # con ACCESO_EMAILS). Producción nunca.
-        restricted = e == "development" && try(w[e].restricted, false)
+        # webapp.development.restricted (por defecto true con front): dev solo
+        # para los emails del secreto compartido dev-acceso-emails (front tras
+        # Cloudflare Access y la API con ACCESO_EMAILS). Producción nunca.
+        restricted = e == "development" && w.front != null && try(w[e].restricted, true)
         # {api_url} y {front_url}: primer hostname de la API y del front en este entorno.
         env = {
           for name, value in w.env : name => replace(replace(value,
@@ -117,7 +117,7 @@ output "restricted_fronts" {
     for k, w in local.webapps : k => {
       hostnames     = try(w.development.front_hostnames, [])
       pages_project = try(w.front.pages_project, "")
-    } if try(w.development.restricted, false)
+    } if w.front != null && try(w.development.restricted, true)
   }
 }
 

@@ -37,8 +37,8 @@ fixcomap/<proyecto>                         fixcomap/platform
 - **Catálogo** (`catalog/<repo>.yaml`): un fichero por proyecto con su tipo (`static` o `webapp`) y
   su configuración (hostnames, proyecto de Pages, servicio de Cloud Run…). Es la única fuente: el
   pipeline y la infra leen de ahí. Un repo sin entrada no hace nada.
-- **Pipeline estándar** (`cicd.yml`): los repos de proyecto no tienen pipeline propio. PR → checks
-  (y preview en static); `develop` → desarrollo/preview; `main` → producción con aprobación. El único
+- **Pipeline estándar** (`cicd.yml`): los repos de proyecto no tienen pipeline propio. PR → checks;
+  `develop` → desarrollo/preview; `main` → producción con aprobación. El único
   check que exigen los rulesets es `cicd / ok`.
 - **Versiones**: cada `ci.yml` fija una versión de platform (`cicd.yml@vX.Y.Z`). Un cambio aquí llega
   a un proyecto cuando sube su versión.
