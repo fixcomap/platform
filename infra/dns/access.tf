@@ -16,6 +16,17 @@ locals {
   restricted_fronts = nonsensitive(length(local.dev_acceso_emails) > 0) ? module.catalog.restricted_fronts : {}
 }
 
+# Login por código al email (sin cuenta de Cloudflare ni de Google): el único
+# método de las apps de dev.
+resource "cloudflare_zero_trust_access_identity_provider" "otp" {
+  count = length(local.restricted_fronts) > 0 ? 1 : 0
+
+  account_id = var.cloudflare_account_id
+  name       = "Código por email"
+  type       = "onetimepin"
+  config     = {}
+}
+
 resource "cloudflare_zero_trust_access_policy" "dev" {
   count = length(local.restricted_fronts) > 0 ? 1 : 0
 
@@ -32,6 +43,9 @@ resource "cloudflare_zero_trust_access_application" "dev" {
   name             = "${each.key} (desarrollo)"
   type             = "self_hosted"
   session_duration = "720h"
+  # Solo código por email, y directo a pedirlo (sin elegir método).
+  allowed_idps              = [cloudflare_zero_trust_access_identity_provider.otp[0].id]
+  auto_redirect_to_identity = true
   destinations = concat(
     [for h in each.value.hostnames : { type = "public", uri = h }],
     [{ type = "public", uri = "*.${each.value.pages_project}.pages.dev" }],
