@@ -291,6 +291,7 @@ jobs:
         env:
           TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
           TF_VAR_otlp_endpoint: ${{ vars.OTLP_ENDPOINT }}
+          TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
         run: |
           tofu init -input=false -reconfigure \
             -backend-config="bucket=${{ matrix.bucket }}" \

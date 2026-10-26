@@ -1,7 +1,7 @@
 # Repositorio Docker. Free tier: 0.5 GB en total; a partir de ahí $0.10/GB/mes.
 # Las políticas de limpieza son la única forma de que no crezca con cada merge.
 resource "google_artifact_registry_repository" "docker" {
-  # checkov:skip=CKV_GCP_84: CMEK requiere Cloud KMS ($0.06/clave/mes + operaciones) para imágenes públicas de una PoC; sin justificación de coste
+  # checkov:skip=CKV_GCP_84: cifrado gestionado por Google; CMEK no se justifica para estas imágenes
   location      = var.region
   repository_id = "docker"
   format        = "DOCKER"

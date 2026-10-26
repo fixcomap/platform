@@ -1,8 +1,6 @@
 # pg_dump diario de la base de producción de cada webapp del catálogo al
 # bucket de backups (infra/platform/backups.tf). db-backups solo crea objetos:
-# la retención de 30 días la aplica el bucket. Restaurar:
-#   gcloud storage cp gs://fixcomap-core-backups/<servicio>/<fecha>.dump .
-#   pg_restore --no-owner --no-acl -d "<cadena>" <fecha>.dump
+# la retención la aplica el bucket.
 name: backups
 
 on:

@@ -40,9 +40,10 @@ variable "landing_hostname" {
 }
 
 variable "alert_email" {
-  description = "Destino de las alertas de disponibilidad. Cloud Monitoring no verifica emails; comprobar que llega la primera."
+  description = "Destino de las alertas de disponibilidad (secret ALERT_EMAIL)."
   type        = string
-  default     = "billing@fixcomap.com"
+  default     = ""
+  sensitive   = true
 }
 
 variable "otlp_endpoint" {

@@ -70,8 +70,7 @@ resource "google_service_account_iam_member" "webapp_deployer_actas" {
 }
 
 # Artifact Registry tampoco admite conditions por imagen: escritura en el
-# repositorio compartido. El deploy usa el digest que construyó su propio job,
-# así que una imagen ajena con el mismo tag no llega a desplegarse.
+# repositorio compartido; cada deploy usa el digest que construyó su propio job.
 resource "google_artifact_registry_repository_iam_member" "webapp_deployer_writer" {
   for_each = local.webapps
 
