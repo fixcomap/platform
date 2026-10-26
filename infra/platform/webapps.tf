@@ -65,17 +65,19 @@ resource "google_service_account" "webapp_runtime" {
   display_name = "Cloud Run: ${each.key} (catalog/${each.key}.yaml)"
 }
 
+# gh-deployer solo para los servicios que aún no existen (deployers.tf): el
+# resto los despliega <service>-deployer.
 resource "google_service_account_iam_member" "gh_deployer_actas_webapp" {
-  for_each = local.webapps
+  for_each = toset(local.webapps_pendientes)
 
   service_account_id = google_service_account.webapp_runtime[each.key].name
   role               = "roles/iam.serviceAccountUser"
   member             = google_service_account.gh_deployer.member
 }
 
-# El repo de cada webapp despliega desde main y develop; nada más puede.
+# Desde la rama del entorno cuyo servicio aún no existe; nada más puede.
 resource "google_service_account_iam_member" "gh_deployer_wif_webapp" {
-  for_each = local.webapp_deploy_refs
+  for_each = { for r, ref in local.webapp_deploy_refs : r => ref if !local.webapp_deploy[local.webapp_ref_service[r]].own }
 
   service_account_id = google_service_account.gh_deployer.name
   role               = "roles/iam.workloadIdentityUser"
@@ -184,7 +186,7 @@ resource "google_secret_manager_secret_version" "webapp_migrate_placeholder" {
 
 # Lo lee el job de deploy para correr webapp.migrate antes del apply de L2.
 resource "google_secret_manager_secret_iam_member" "gh_deployer_migrate" {
-  for_each = local.webapp_migrate_secrets
+  for_each = { for id, x in local.webapp_migrate_secrets : id => x if !local.webapp_deploy[x.service].own }
 
   secret_id = google_secret_manager_secret.webapp_migrate[each.key].id
   role      = "roles/secretmanager.secretAccessor"
