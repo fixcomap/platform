@@ -112,13 +112,29 @@ output "webapp_services" {
 }
 
 output "restricted_fronts" {
-  description = "Webapps con desarrollo restringido => hostnames del front de dev y proyecto de Pages (sus previews también)."
-  value = {
-    for k, w in local.webapps : k => {
-      hostnames     = try(w.development.front_hostnames, [])
-      pages_project = try(w.front.pages_project, "")
-    } if w.front != null && try(w.development.restricted, true)
-  }
+  description = <<-EOT
+    Sitios tras Cloudflare Access => hostnames, proyecto de Pages (sus previews también) y si
+    incluye el *.pages.dev de producción: el front de dev de una webapp restringida o un static
+    con static.restricted (privado también en producción).
+  EOT
+  value = merge(
+    {
+      for k, w in local.webapps : k => {
+        hostnames     = try(w.development.front_hostnames, [])
+        pages_project = try(w.front.pages_project, "")
+        apex          = false
+        label         = "desarrollo"
+      } if w.front != null && try(w.development.restricted, true)
+    },
+    {
+      for k, s in local.static : k => {
+        hostnames     = s.hostnames
+        pages_project = s.pages_project
+        apex          = true
+        label         = "privado"
+      } if try(s.restricted, false)
+    },
+  )
 }
 
 output "webapp_hostnames" {

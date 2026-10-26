@@ -1,6 +1,6 @@
-# Desarrollo restringido (webapp.development.restricted): el front de dev y las
-# previews de su proyecto de Pages piden login (código al email) y solo dejan
-# pasar a los emails de dev-acceso-emails. La API se protege en la app
+# Desarrollo restringido (webapp.development.restricted) y sitios privados
+# (static.restricted): el front y las previews de su proyecto de Pages piden
+# login (código al email) y solo dejan pasar a los emails de dev-acceso-emails. La API se protege en la app
 # (ACCESO_EMAILS). Con el placeholder (sin "@") no se crea nada.
 # Cambiar los emails no dispara este apply: después, workflow_dispatch de deploy.
 data "google_secret_manager_secret_version" "dev_acceso" {
@@ -40,7 +40,7 @@ resource "cloudflare_zero_trust_access_application" "dev" {
   for_each = local.restricted_fronts
 
   account_id       = var.cloudflare_account_id
-  name             = "${each.key} (desarrollo)"
+  name             = "${each.key} (${each.value.label})"
   type             = "self_hosted"
   session_duration = "720h"
   # Solo código por email, y directo a pedirlo (sin elegir método).
@@ -49,6 +49,7 @@ resource "cloudflare_zero_trust_access_application" "dev" {
   destinations = concat(
     [for h in each.value.hostnames : { type = "public", uri = h }],
     [{ type = "public", uri = "*.${each.value.pages_project}.pages.dev" }],
+    each.value.apex ? [{ type = "public", uri = "${each.value.pages_project}.pages.dev" }] : [],
   )
   policies = [{ id = cloudflare_zero_trust_access_policy.dev[0].id, precedence = 1 }]
 }
