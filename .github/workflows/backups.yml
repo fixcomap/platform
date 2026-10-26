@@ -1,0 +1,87 @@
+# pg_dump diario de la base de producción de cada webapp del catálogo al
+# bucket de backups (infra/platform/backups.tf). db-backups solo crea objetos:
+# la retención de 30 días la aplica el bucket. Restaurar:
+#   gcloud storage cp gs://fixcomap-core-backups/<servicio>/<fecha>.dump .
+#   pg_restore --no-owner --no-acl -d "<cadena>" <fecha>.dump
+name: backups
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: fixcomap-core
+  BUCKET: fixcomap-core-backups
+  BACKUPS_SA: db-backups@fixcomap-core.iam.gserviceaccount.com
+  PG_CLIENT: "18" # el cliente más nuevo vuelca cualquier servidor anterior
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: backups
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    name: pg_dump (producción)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: catalog
+          persist-credentials: false
+
+      - name: auth GCP (db-backups)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.BACKUPS_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: cliente de PostgreSQL
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install -y -qq "postgresql-client-$PG_CLIENT" >/dev/null
+
+      - name: pg_dump
+        run: |
+          PATH="/usr/lib/postgresql/$PG_CLIENT/bin:$PATH"
+          stamp=$(date -u +%Y-%m-%dT%H%M%SZ)
+          failed=0
+          for f in catalog/*.yaml; do
+            [ "$(yq -r '.type' "$f")" = webapp ] || continue
+            svc=$(yq -r '.webapp.service' "$f")
+            # Mismo criterio que backups.tf: la cadena directa de webapp.migrate o,
+            # en el contrato original (sin webapp.secrets), <service>-database-url.
+            if [ -n "$(yq -r '.webapp.migrate // ""' "$f")" ]; then
+              secret="$svc-database-url-direct"
+            elif [ "$(yq -r '.webapp.secrets == null' "$f")" = true ]; then
+              secret="$svc-database-url"
+            else
+              echo "$svc: sin base que volcar"; continue
+            fi
+            url=$(gcloud secrets versions access latest --secret "$secret" --project "$GCP_PROJECT_ID")
+            echo "::add-mask::$url"
+            # pg_dump necesita sesión: fuera el pooler de Neon.
+            url=${url/-pooler./.}
+            echo "::add-mask::$url"
+            out="$RUNNER_TEMP/$svc.dump"
+            if pg_dump --format=custom --no-owner --no-acl -d "$url" -f "$out" && pg_restore -l "$out" >/dev/null; then
+              gcloud storage cp --quiet "$out" "gs://$BUCKET/$svc/$stamp.dump"
+              echo "- \`$svc\` → $(du -h "$out" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$svc: pg_dump falló"; failed=1
+            fi
+            rm -f "$out"
+          done
+          exit $failed
