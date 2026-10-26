@@ -1,5 +1,5 @@
-# tf-platform: la única identidad que puede crear IAM. Es Owner de facto, y por
-# eso solo la usa apply-platform.yml, bajo environment con aprobación humana.
+# tf-platform: la única identidad que administra IAM; solo se usa bajo
+# environment con aprobación humana.
 resource "google_service_account" "tf_platform" {
   account_id   = "tf-platform"
   display_name = "OpenTofu L0+L1 (pipeline, aprobación humana)"

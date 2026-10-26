@@ -11,7 +11,7 @@ resource "google_cloud_run_v2_service" "app" {
   # domain mapping) vive en L1 (cloud_run_iam.tf, domain.tf) y la aplica
   # tf-platform. L2 no toca IAM ni hostnames.
 
-  # PoC sin datos: el servicio debe poder destruirse desde el pipeline.
+  # Sin estado: el servicio puede recrearse desde el pipeline.
   deletion_protection = false
 
   template {
