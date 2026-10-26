@@ -53,12 +53,12 @@ Dar de alta un proyecto, el flujo de ramas y el runbook: [`CONTRIBUTING.md`](CON
 |---|---|---|---|---|
 | L0 | `infra/bootstrap/` | Persona (Cloud Shell) la primera vez; después `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | Bucket de estado, APIs mínimas, WIF pool + provider, SA `tf-platform` |
 | L1 | `infra/platform/` | `tf-platform` | `deploy.yml` → `platform-apply`, con aprobación | APIs, Artifact Registry, SAs `gh-deployer` / `tf-plan`; por webapp del catálogo, `<service>-runtime`, secretos, WIF de su repo, `run.invoker` público y domain mappings |
-| L2 | `infra/webapp/` | `gh-deployer` | `cicd.yml` desde el repo de cada webapp | Cloud Run (solo el servicio), estado `prefix=<service>` |
+| L2 | `infra/webapp/` | `<service>-deployer` (`gh-deployer` si el servicio aún no existe) | `cicd.yml` desde el repo de cada webapp | Cloud Run (solo el servicio), estado en `fixcomap-core-tfstate-<webapp>`, `prefix=<service>` |
 | dns | `infra/dns/` | Token de Cloudflare (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | Por proyecto del catálogo: proyecto de Pages, dominios y CNAME (static) o CNAME a Cloud Run (webapp) |
 | observability | `infra/observability/` | Token de Grafana Cloud (secret del environment `platform`) | `deploy.yml` → `platform-apply`, con aprobación | Dashboard, SLOs y alertas de la app en Grafana Cloud |
 
 Estado: bucket `fixcomap-core-tfstate` (prefijos `bootstrap/`, `platform/`, `dns/`) y bucket propio
-`fixcomap-core-tfstate-app` para L2. Separados porque `gh-deployer` necesita `storage.objects.list` en
+`fixcomap-core-tfstate-app` para la L2 de `app`; cada webapp, el suyo (`fixcomap-core-tfstate-<webapp>`). Separados porque `gh-deployer` necesita `storage.objects.list` en
 `init` y las condiciones IAM por prefijo no lo autorizan; el aislamiento del estado es por bucket.
 
 `www.fixcomap.com` y el apex sirven la landing (repo `fixcomap/web`) desde Cloudflare Pages.
@@ -69,6 +69,7 @@ Estado: bucket `fixcomap-core-tfstate` (prefijos `bootstrap/`, `platform/`, `dns
 |---|---|---|
 | `tf-platform` | Crear IAM, SAs, APIs, AR, secretos, buckets de estado (`storage.admin` de proyecto) | `repository == fixcomap/platform` **y** `ref == refs/heads/main` **y** `environment == platform` |
 | `gh-deployer` | Push a AR, `run.developer`, actAs `app-runtime`, estado solo en `fixcomap-core-tfstate-app` | `repository == fixcomap/platform` **y** `ref == refs/heads/main` |
+| `<service>-deployer` | Por webapp: `run.developer` sobre sus servicios ya creados, `run.viewer`, push a AR, actAs `<service>-runtime`, sus `-database-url-direct` y su bucket de estado | `repository_ref == fixcomap/<webapp>:refs/heads/{main,develop}` |
 | `tf-plan` | `roles/viewer`, leer estado de todas las capas | `repository == fixcomap/platform`, cualquier rama |
 | `app-runtime` | Leer el secreto `app-config` | No la suplanta nadie; es la identidad del contenedor |
 
