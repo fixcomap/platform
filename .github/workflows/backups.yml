@@ -77,7 +77,12 @@ jobs:
             echo "::add-mask::$url"
             out="$RUNNER_TEMP/$svc.dump"
             if pg_dump --format=custom --no-owner --no-acl -d "$url" -f "$out" && pg_restore -l "$out" >/dev/null; then
-              gcloud storage cp --quiet "$out" "gs://$BUCKET/$svc/$stamp.dump"
+              # Subida directa a la API: gcloud storage cp lee antes el objeto y
+              # db-backups solo puede crear (ifGenerationMatch=0: nunca sobrescribe).
+              curl -sSf -X POST --data-binary "@$out" \
+                -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+                -H "Content-Type: application/octet-stream" \
+                "https://storage.googleapis.com/upload/storage/v1/b/$BUCKET/o?uploadType=media&ifGenerationMatch=0&name=$svc%2F$stamp.dump" >/dev/null
               echo "- \`$svc\` → $(du -h "$out" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
             else
               echo "::error::$svc: pg_dump falló"; failed=1
