@@ -9,8 +9,10 @@ webapp:
   public: false
   monitoring: true
   production:
+    public: true
     # El primero es el canónico (APP_BASE_URL); el resto redirigen (301) a él.
     hostnames: [plantilla.fixcomap.com, app.fixcomap.com]
   development:
+    public: true
     hostnames: [plantilla.dev.fixcomap.com, dev.fixcomap.com]
     db_name: app_dev
