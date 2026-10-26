@@ -7,3 +7,4 @@ static:
   site_dir: site
   hostnames: [docs.fixcomap.com]
   restricted: true           # solo los emails de dev-acceso-emails, también en producción
+  validate_html: false       # el HTML lo genera el tema de MkDocs Material (errores W3C suyos)

@@ -62,6 +62,7 @@ jobs:
                 [ "$(yq -r '.static.pages_project // ""' "$f")" != "" ] || fail "$f" "falta static.pages_project"
                 [ "$(yq -r '.static.hostnames | length' "$f")" -gt 0 ] || fail "$f" "falta static.hostnames"
                 case "$(yq -r '.static.restricted // false' "$f")" in true|false) ;; *) fail "$f" "static.restricted: true o false" ;; esac
+                case "$(yq -r '.static.validate_html // true' "$f")" in true|false) ;; *) fail "$f" "static.validate_html: true o false" ;; esac
                 ;;
               webapp)
                 svc=$(yq -r '.webapp.service // ""' "$f")

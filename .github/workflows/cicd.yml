@@ -53,6 +53,7 @@ jobs:
       node_version: ${{ steps.catalog.outputs.node_version }}
       require_csp: ${{ steps.catalog.outputs.require_csp }}
       restricted: ${{ steps.catalog.outputs.restricted }}
+      validate_html: ${{ steps.catalog.outputs.validate_html }}
       pages_project: ${{ steps.catalog.outputs.pages_project }}
       production_url: ${{ steps.catalog.outputs.production_url }}
       service: ${{ steps.stage.outputs.service }}
@@ -125,6 +126,7 @@ jobs:
               echo "pages_project=$(yq -r '.static.pages_project' "$f")"
               echo "production_url=https://$(yq -r '.static.hostnames[0]' "$f")"
               echo "restricted=$(yq -r '.static.restricted // false' "$f")"
+              echo "validate_html=$(yq -r '.static.validate_html == false | not' "$f")"
             fi
             if [ "$type" = webapp ]; then
               echo "base_service=$(yq -r '.webapp.service' "$f")"
@@ -300,6 +302,8 @@ jobs:
           test -d "$SITE_DIR" || { echo "::error::el build no ha generado $SITE_DIR"; exit 1; }
 
       - name: validar HTML (W3C Nu)
+        # static.validate_html: false solo para HTML generado por un tema de terceros.
+        if: needs.resolve.outputs.validate_html != 'false'
         run: |
           docker run --rm -v "$PWD/$SITE_DIR:/site:ro" ghcr.io/validator/validator:24.10.17 \
             vnu --skip-non-html --errors-only --also-check-css /site
