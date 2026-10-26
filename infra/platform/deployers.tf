@@ -15,6 +15,14 @@ locals {
       own         = e.public
     }
   }
+
+  # "<webapp>:<rama>" de webapp_deploy_refs => servicio de ese entorno.
+  webapp_ref_service = merge([
+    for k, w in local.webapps : { "${k}:main" = w.service, "${k}:develop" = "${w.service}-dev" }
+  ]...)
+
+  # Webapps con algún servicio que aún crea gh-deployer.
+  webapps_pendientes = distinct([for s, d in local.webapp_deploy : d.webapp if !d.own])
 }
 
 resource "google_service_account" "webapp_deployer" {
@@ -118,7 +126,7 @@ resource "google_storage_bucket_iam_member" "webapp_deployer_state" {
 
 # gh-deployer crea los servicios que aún no existen: necesita el estado de esa webapp.
 resource "google_storage_bucket_iam_member" "gh_deployer_webapp_state" {
-  for_each = toset(distinct([for s, d in local.webapp_deploy : d.webapp if !d.own]))
+  for_each = toset(local.webapps_pendientes)
 
   bucket = google_storage_bucket.webapp_state[each.key].name
   role   = "roles/storage.objectUser"

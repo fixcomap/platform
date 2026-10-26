@@ -1,0 +1,10 @@
+# Documentación interna (MkDocs). Privada: repo privado y sitio tras Cloudflare Access.
+repo: fixcomap/docs
+type: static
+static:
+  pages_project: fixcomap-docs
+  build_cmd: pip install --quiet --require-hashes -r requirements.txt && mkdocs build --strict
+  site_dir: site
+  hostnames: [docs.fixcomap.com]
+  restricted: true           # solo los emails de dev-acceso-emails, también en producción
+  validate_html: false       # el HTML lo genera el tema de MkDocs Material (errores W3C suyos)

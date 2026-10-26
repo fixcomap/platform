@@ -68,7 +68,7 @@ Estado: bucket `fixcomap-core-tfstate` (prefijos `bootstrap/`, `platform/`, `dns
 | SA | Puede | Token OIDC aceptado |
 |---|---|---|
 | `tf-platform` | Crear IAM, SAs, APIs, AR, secretos, buckets de estado (`storage.admin` de proyecto) | `repository == fixcomap/platform` **y** `ref == refs/heads/main` **y** `environment == platform` |
-| `gh-deployer` | Push a AR, `run.developer`, actAs `app-runtime`, estado solo en `fixcomap-core-tfstate-app` | `repository == fixcomap/platform` **y** `ref == refs/heads/main` |
+| `gh-deployer` | Push a AR, `run.developer`, actAs `app-runtime`, estado en `fixcomap-core-tfstate-app`; además crea los servicios de webapp que aún no existen | `repository == fixcomap/platform` **y** `ref == refs/heads/main`; de una webapp, solo la rama del entorno sin servicio |
 | `<service>-deployer` | Por webapp: `run.developer` sobre sus servicios ya creados, `run.viewer`, push a AR, actAs `<service>-runtime`, sus `-database-url-direct` y su bucket de estado | `repository_ref == fixcomap/<webapp>:refs/heads/{main,develop}` |
 | `tf-plan` | `roles/viewer`, leer estado de todas las capas | `repository == fixcomap/platform`, cualquier rama |
 | `app-runtime` | Leer el secreto `app-config` | No la suplanta nadie; es la identidad del contenedor |

@@ -52,6 +52,8 @@ jobs:
       build_cmd: ${{ steps.catalog.outputs.build_cmd }}
       node_version: ${{ steps.catalog.outputs.node_version }}
       require_csp: ${{ steps.catalog.outputs.require_csp }}
+      restricted: ${{ steps.catalog.outputs.restricted }}
+      validate_html: ${{ steps.catalog.outputs.validate_html }}
       pages_project: ${{ steps.catalog.outputs.pages_project }}
       production_url: ${{ steps.catalog.outputs.production_url }}
       service: ${{ steps.stage.outputs.service }}
@@ -123,6 +125,8 @@ jobs:
               echo "require_csp=$(yq -r '.static.require_csp == false | not' "$f")"
               echo "pages_project=$(yq -r '.static.pages_project' "$f")"
               echo "production_url=https://$(yq -r '.static.hostnames[0]' "$f")"
+              echo "restricted=$(yq -r '.static.restricted // false' "$f")"
+              echo "validate_html=$(yq -r '.static.validate_html == false | not' "$f")"
             fi
             if [ "$type" = webapp ]; then
               echo "base_service=$(yq -r '.webapp.service' "$f")"
@@ -298,6 +302,8 @@ jobs:
           test -d "$SITE_DIR" || { echo "::error::el build no ha generado $SITE_DIR"; exit 1; }
 
       - name: validar HTML (W3C Nu)
+        # static.validate_html: false solo para HTML generado por un tema de terceros.
+        if: needs.resolve.outputs.validate_html != 'false'
         run: |
           docker run --rm -v "$PWD/$SITE_DIR:/site:ro" ghcr.io/validator/validator:24.10.17 \
             vnu --skip-non-html --errors-only --also-check-css /site
@@ -404,16 +410,17 @@ jobs:
           # añade el apply de dns posterior al primer deploy) y la API no es accesible.
           URLS: ${{ steps.deploy.outputs.url }} ${{ needs.resolve.outputs.environment == 'production' && needs.resolve.outputs.type == 'static' && needs.resolve.outputs.production_url || '' }} ${{ needs.resolve.outputs.public == 'true' && needs.resolve.outputs.site_url || '' }}
           ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
+          RESTRICTED: ${{ needs.resolve.outputs.restricted }}
         run: |
           # Hasta 5 min: el *.pages.dev de un proyecto recién creado tarda en resolver.
-          # En desarrollo, un 302 al login de Cloudflare Access también vale (dev restringido).
+          # En desarrollo o en un static privado, un 302 al login de Cloudflare Access también vale.
           for u in $URLS; do
             ok=0
             for _ in $(seq 1 30); do
               out=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 15 "$u/" || true)
               code=${out%% *}
               [ "$code" = "200" ] && { echo "$u → 200"; ok=1; break; }
-              if [ "$ENVIRONMENT" = development ] && [ "$code" = "302" ] && [[ "${out#* }" =~ ^https://[a-z0-9-]+\.cloudflareaccess\.com/cdn-cgi/access/login/ ]]; then
+              if { [ "$ENVIRONMENT" = development ] || [ "$RESTRICTED" = true ]; } && [ "$code" = "302" ] && [[ "${out#* }" =~ ^https://[a-z0-9-]+\.cloudflareaccess\.com/cdn-cgi/access/login/ ]]; then
                 echo "$u → 302 a Cloudflare Access"; ok=1; break
               fi
               sleep 10
