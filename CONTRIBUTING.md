@@ -158,23 +158,6 @@ Los callers fijan una versión (`cicd.yml@vX.Y.Z`): un cambio aquí llega a cada
 su versión. Para probar antes, un caller puede apuntar temporalmente a `@feature/<rama>`; el catálogo
 se lee de esa misma ref.
 
-## Runbook: cuando algo está en rojo
-
-Premisa: **un pipeline roto no tira producción**. Pages y Cloud Run son atómicos: si el deploy falla,
-sigue sirviendo la versión anterior. Lo que se pierde es poder desplegar, y para eso está esto.
-
-| Síntoma | Qué mirar | Qué hacer |
-|---|---|---|
-| `deploy` rojo en `platform-plan`/`platform-apply` | step summary del job: el plan | Si el error es del provider (API, cuota) → `gh run rerun <id> --failed`. Si el plan quiere destruir algo inesperado → **no aprobar**, abrir hotfix. |
-| `deploy` rojo en `app` | `trivy image` (CVE nueva en la base) o `tofu apply` L2 | CVE: PR bumpeando imagen base/Go. Apply: leer el error; L2 no toca IAM, nada que romper fuera de Cloud Run. |
-| `deploy` de `web`/portfolio rojo | job `pages`: build, wrangler o smoke test | Build/lint: arreglar en PR. Wrangler 401/403: token de Cloudflare revocado → regenerar (Account > Pages > Edit + Zone > DNS > Edit) y actualizar el secret. Smoke test: ver la URL de Pages del summary. |
-| Landing/app caída (alerta de Cloud Monitoring) | último deploy en Actions | Web: `npx wrangler pages deployment list --project-name fixcomap-landing` y `npx wrangler pages deployment rollback <id>`. App: `gcloud run services update-traffic app --region europe-west1 --to-revisions <anterior>=100`. |
-| Issue `[drift] infra/<capa>` | el plan del issue | Alguien tocó a mano. Si el cambio es deseado: llevarlo a código en PR. Si no: aprobar el `deploy` de la siguiente release, que lo revierte. |
-| Issue `[cost]` | inventario del issue | Borrar el recurso vía PR (nunca a mano) o justificarlo con `cost-approved` + coste mensual. |
-| `drift`/`cost-guard` rojo por auth (`tf-plan` no puede autenticar) | WIF pool/provider (L0) o binding de `tf-plan` (L1) | Solo `tf-platform` lo arregla desde `main`; si L0 rompió la identidad del pipeline, Cloud Shell (README). |
-| Aprobación pendiente y el aprobador no está | environment `platform` / `production` | Cualquiera de los reviewers configurados aprueba: `gh api -X POST repos/<repo>/actions/runs/<id>/pending_deployments -F 'environment_ids[]=<id>' -f state=approved -f comment=ok`. |
-| Todo `app.` parado tras el 16/12/2026 | Billing | Free Trial expirado sin activar la cuenta. Activar en Billing → *Activate full account*; los recursos vuelven solos. Hacerlo **antes**. |
-
 ## Trabajo local con OpenTofu
 
 Nunca `apply` ni credenciales de GCP en local: el estado lo escribe el pipeline. En local se revisa
@@ -204,25 +187,6 @@ trivy config --severity HIGH,CRITICAL infra
 gitleaks git . --no-banner --redact
 actionlint
 ```
-
-## Configuración del repositorio en GitHub (una vez)
-
-```sh
-R=fixcomap/platform
-
-# develop desde main y como rama por defecto
-git switch main && git switch -c develop && git push -u origin develop
-gh repo edit $R --default-branch develop --enable-merge-commit --enable-squash-merge=false --enable-rebase-merge=false --delete-branch-on-merge
-
-# Rulesets: PR obligatorio, 1 aprobación, checks en verde, sin push directo ni borrado
-for f in main develop tags; do gh api -X POST repos/$R/rulesets --input .github/rulesets/$f.json; done
-```
-
-`develop` exige PR y checks en verde pero **0 aprobaciones** (el trabajo diario fluye); `main` exige
-**1 aprobación** del otro DevOps (solo releases y hotfixes). Los rulesets no tienen `bypass_actors`: tampoco los
-admins pueden hacer push directo. Los nombres de
-los checks requeridos son los `name:` de los jobs de `pr-checks.yml`; si se renombra un job hay que
-actualizar `.github/rulesets/*.json` y reaplicar con `gh api -X PUT repos/$R/rulesets/<id>`.
 
 ## Commits
 
