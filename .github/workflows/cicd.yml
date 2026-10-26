@@ -413,14 +413,15 @@ jobs:
           RESTRICTED: ${{ needs.resolve.outputs.restricted }}
         run: |
           # Hasta 5 min: el *.pages.dev de un proyecto recién creado tarda en resolver.
-          # En desarrollo o en un static privado, un 302 al login de Cloudflare Access también vale.
+          # En desarrollo, en un static privado o en una URL *.pages.dev (las previews de un front
+          # con desarrollo restringido están tras Access), un 302 al login de Access también vale.
           for u in $URLS; do
             ok=0
             for _ in $(seq 1 30); do
               out=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 15 "$u/" || true)
               code=${out%% *}
               [ "$code" = "200" ] && { echo "$u → 200"; ok=1; break; }
-              if { [ "$ENVIRONMENT" = development ] || [ "$RESTRICTED" = true ]; } && [ "$code" = "302" ] && [[ "${out#* }" =~ ^https://[a-z0-9-]+\.cloudflareaccess\.com/cdn-cgi/access/login/ ]]; then
+              if { [ "$ENVIRONMENT" = development ] || [ "$RESTRICTED" = true ] || [[ "$u" == *.pages.dev ]]; } && [ "$code" = "302" ] && [[ "${out#* }" =~ ^https://[a-z0-9-]+\.cloudflareaccess\.com/cdn-cgi/access/login/ ]]; then
                 echo "$u → 302 a Cloudflare Access"; ok=1; break
               fi
               sleep 10
