@@ -12,6 +12,8 @@ locals {
 }
 
 resource "google_storage_bucket" "backups" {
+  # checkov:skip=CKV_GCP_78: db-backups no puede sobrescribir ni borrar; cada dump es un objeto nuevo y la retención es la del lifecycle
+  # checkov:skip=CKV_GCP_62: mismo motivo que los buckets de estado (access logs con coste; Admin Activity ya registra cambios)
   name                        = "${var.project_id}-backups"
   location                    = var.region
   storage_class               = "STANDARD"
