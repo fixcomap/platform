@@ -33,8 +33,8 @@ env:
   # No son secretos: identifican el pool de WIF y la SA que despliega L2. Viven
   # aquí y no como variables de cada repo para que un repo nuevo no configure nada.
   GCP_WIF_PROVIDER: projects/582439706326/locations/global/workloadIdentityPools/github/providers/github-oidc
+  GCP_PROJECT_ID: fixcomap-core
   GH_DEPLOYER_SA: gh-deployer@fixcomap-core.iam.gserviceaccount.com
-  STATE_BUCKET_APP: fixcomap-core-tfstate-app
   DOCKER_REPO: europe-west1-docker.pkg.dev/fixcomap-core/docker
 
 jobs:
@@ -64,6 +64,8 @@ jobs:
       build_dir: ${{ steps.catalog.outputs.build_dir }}
       front_env: ${{ steps.stage.outputs.front_env }}
       site_url: ${{ steps.stage.outputs.site_url }}
+      deploy_sa: ${{ steps.stage.outputs.deploy_sa }}
+      state_bucket: ${{ steps.stage.outputs.state_bucket }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -176,7 +178,14 @@ jobs:
           f=".platform/catalog/${GITHUB_REPOSITORY#*/}.yaml"
           if [ "$TYPE" = webapp ]; then
             case "$env" in production|development) e=$env ;; *) e=development ;; esac
-            echo "public=$(yq -r ".webapp.$e.public // .webapp.public // false" "$f")" >> "$GITHUB_OUTPUT"
+            public=$(yq -r ".webapp.$e.public // .webapp.public // false" "$f")
+            echo "public=$public" >> "$GITHUB_OUTPUT"
+            # Identidad de despliegue (infra/platform/deployers.tf): la de la webapp si
+            # el servicio ya existe (public); si no, gh-deployer lo crea.
+            sa="$GH_DEPLOYER_SA"; [ "$public" = true ] && sa="$BASE_SERVICE-deployer@$GCP_PROJECT_ID.iam.gserviceaccount.com"
+            echo "deploy_sa=$sa" >> "$GITHUB_OUTPUT"
+            echo "state_bucket=$GCP_PROJECT_ID-tfstate-${GITHUB_REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+            echo "identidad: \`${sa%@*}\`" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           # Front de una webapp: variables del build (VITE_*...) con {api_url} y
@@ -509,12 +518,12 @@ jobs:
         env:
           TRIVY_DISABLE_VEX_NOTICE: "true"
 
-      - name: auth GCP (gh-deployer)
+      - name: auth GCP (deployer)
         if: env.DEPLOY == 'true'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
-          service_account: ${{ env.GH_DEPLOYER_SA }}
+          service_account: ${{ needs.resolve.outputs.deploy_sa }}
 
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
         if: env.DEPLOY == 'true'
@@ -573,11 +582,11 @@ jobs:
             infra/webapp
           persist-credentials: false
 
-      - name: auth GCP (gh-deployer)
+      - name: auth GCP (deployer)
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
-          service_account: ${{ env.GH_DEPLOYER_SA }}
+          service_account: ${{ needs.resolve.outputs.deploy_sa }}
 
       # webapp.migrate: antes del apply, así la revisión nueva arranca con el esquema
       # que necesita. Si falla, no se despliega y sigue la revisión anterior.
@@ -613,7 +622,7 @@ jobs:
           TF_VAR_service: ${{ env.SERVICE }}
           TF_VAR_image: ${{ needs.webapp-image.outputs.digest }}
         run: |
-          tofu init -input=false -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=$SERVICE"
+          tofu init -input=false -backend-config="bucket=${{ needs.resolve.outputs.state_bucket }}" -backend-config="prefix=$SERVICE"
           tofu plan -input=false -no-color -out=tfplan
           { echo "## apply infra/webapp ($SERVICE)"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           tofu apply -input=false tfplan
