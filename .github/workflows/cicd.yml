@@ -5,14 +5,14 @@
 #             workflow -> tipo de proyecto, config y etapa (preview | production).
 #             Repo sin entrada en el catálogo: no se hace nada (no-action).
 #   comunes   gitflow (solo PR) + gitleaks/trivy + higiene (scripts/higiene.sh), para cualquier tipo.
-#   static    checks HTML/CSS + Cloudflare Pages (PR/develop: preview; main: producción).
+#   static    checks HTML/CSS + Cloudflare Pages (develop: preview; main: producción).
 #   webapp    checks del runtime + imagen (trivy, cosign) + migraciones + Cloud Run con
 #             infra/webapp (PR: solo build; develop: <service>-dev; main: <service> + tag
 #             vVERSION) y, con webapp.front, el front en Pages tras la API (job static-deploy).
 #   ok        check único que exigen los rulesets.
 #
 # Etapas por evento (static | webapp):
-#   pull_request -> checks + preview | checks + build sin push (forks: solo checks)
+#   pull_request -> checks           | checks + build sin push
 #   push develop -> checks + preview | despliegue en development
 #   push main    -> checks + producción, ambos con aprobación del environment production
 name: cicd
@@ -156,7 +156,10 @@ jobs:
           deploy=true; [ "$FORK" = true ] && deploy=false
           case "$TYPE" in
             static)
-              if [ "$main" = true ]; then env=production; else env=preview; fi ;;
+              # Solo despliegan main y develop: el token de Pages no sale de ramas protegidas.
+              if [ "$main" = true ]; then env=production
+              elif [ "$develop" = true ]; then env=preview
+              else env=none; deploy=false; fi ;;
             webapp)
               # Solo despliegan main y develop: una PR construye la imagen sin publicarla.
               if [ "$main" = true ]; then env=production; service="$BASE_SERVICE"
