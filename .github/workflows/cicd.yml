@@ -391,13 +391,19 @@ jobs:
           # El de un front solo con public: true: hasta entonces su dominio no está en Pages (lo
           # añade el apply de dns posterior al primer deploy) y la API no es accesible.
           URLS: ${{ steps.deploy.outputs.url }} ${{ needs.resolve.outputs.environment == 'production' && needs.resolve.outputs.type == 'static' && needs.resolve.outputs.production_url || '' }} ${{ needs.resolve.outputs.public == 'true' && needs.resolve.outputs.site_url || '' }}
+          ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
         run: |
           # Hasta 5 min: el *.pages.dev de un proyecto recién creado tarda en resolver.
+          # En desarrollo, un 302 al login de Cloudflare Access también vale (dev restringido).
           for u in $URLS; do
             ok=0
             for _ in $(seq 1 30); do
-              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$u/" || true)
+              out=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 15 "$u/" || true)
+              code=${out%% *}
               [ "$code" = "200" ] && { echo "$u → 200"; ok=1; break; }
+              if [ "$ENVIRONMENT" = development ] && [ "$code" = "302" ] && [[ "${out#* }" =~ ^https://[a-z0-9-]+\.cloudflareaccess\.com/cdn-cgi/access/login/ ]]; then
+                echo "$u → 302 a Cloudflare Access"; ok=1; break
+              fi
               sleep 10
             done
             [ "$ok" = 1 ] || { echo "::error::$u no responde 200 tras el deploy (último código: $code)"; exit 1; }
