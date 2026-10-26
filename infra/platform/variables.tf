@@ -39,24 +39,6 @@ variable "app_public" {
   default     = true
 }
 
-variable "app_hostnames" {
-  description = <<-EOT
-    Hostnames de producción; deben coincidir con los CNAME de infra/dns. El
-    principal lo fija base_url en infra/app; el resto redirigen (301) a él.
-  EOT
-  type        = set(string)
-  default     = ["app.fixcomap.com", "plantilla.fixcomap.com"]
-}
-
-variable "enable_domain_mapping" {
-  description = <<-EOT
-    Crea el domain mapping. Requiere que el servicio exista (L2 aplicado) y que
-    tf-platform sea propietario verificado del dominio.
-  EOT
-  type        = bool
-  default     = true
-}
-
 # ---------- desarrollo ----------
 # Servicio app-dev, creado en L2 por deploy-dev.yml en cada push a develop.
 # Mismo arranque en dos pasos que producción: dev_public y el domain mapping
@@ -67,23 +49,8 @@ variable "dev_service_name" {
   default = "app-dev"
 }
 
-variable "dev_hostnames" {
-  description = <<-EOT
-    Hostnames de desarrollo; deben coincidir con los CNAME de infra/dns. El
-    principal lo fija base_url en deploy-dev.yml; el resto redirigen (301) a él.
-  EOT
-  type        = set(string)
-  default     = ["dev.fixcomap.com", "plantilla.dev.fixcomap.com"]
-}
-
 variable "dev_public" {
   description = "run.invoker a allUsers sobre app-dev. false hasta que L2 lo haya creado."
-  type        = bool
-  default     = true
-}
-
-variable "enable_dev_domain_mapping" {
-  description = "Domain mappings de dev_hostnames. false hasta que exista app-dev."
   type        = bool
   default     = true
 }

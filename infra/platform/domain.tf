@@ -4,42 +4,21 @@
 # hostname es, como el invoker, una decisión de plataforma. tf-platform debe
 # ser propietario verificado del dominio en Search Console (ver README).
 # El CNAME correspondiente vive en infra/dns.
+
+# Mappings de app y app-dev, ahora de plantilla y plantilla-dev (webapps.tf).
 moved {
-  from = google_cloud_run_domain_mapping.app[0]
-  to   = google_cloud_run_domain_mapping.app["app.fixcomap.com"]
+  from = google_cloud_run_domain_mapping.app["app.fixcomap.com"]
+  to   = google_cloud_run_domain_mapping.webapp["app.fixcomap.com"]
 }
-
-resource "google_cloud_run_domain_mapping" "app" {
-  for_each = var.enable_domain_mapping ? var.app_hostnames : []
-
-  name     = each.value
-  location = var.region
-
-  metadata {
-    namespace = var.project_id
-  }
-
-  spec {
-    route_name = var.cloud_run_service_name
-  }
-}
-
 moved {
-  from = google_cloud_run_domain_mapping.app_dev[0]
-  to   = google_cloud_run_domain_mapping.app_dev["dev.fixcomap.com"]
+  from = google_cloud_run_domain_mapping.app["plantilla.fixcomap.com"]
+  to   = google_cloud_run_domain_mapping.webapp["plantilla.fixcomap.com"]
 }
-
-resource "google_cloud_run_domain_mapping" "app_dev" {
-  for_each = var.enable_dev_domain_mapping ? var.dev_hostnames : []
-
-  name     = each.value
-  location = var.region
-
-  metadata {
-    namespace = var.project_id
-  }
-
-  spec {
-    route_name = var.dev_service_name
-  }
+moved {
+  from = google_cloud_run_domain_mapping.app_dev["dev.fixcomap.com"]
+  to   = google_cloud_run_domain_mapping.webapp["dev.fixcomap.com"]
+}
+moved {
+  from = google_cloud_run_domain_mapping.app_dev["plantilla.dev.fixcomap.com"]
+  to   = google_cloud_run_domain_mapping.webapp["plantilla.dev.fixcomap.com"]
 }
