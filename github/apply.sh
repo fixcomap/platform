@@ -87,6 +87,8 @@ for repo in "$@"; do
 
   # platform no tiene previews ni producción propia: su único environment es "platform".
   [ "$repo" != platform ] || continue
+  # Privados: el plan gratuito no admite reglas en los environments (ramas, reviewers).
+  [ "$publico" = true ] || { echo "$repo: privado, environments sin reglas (plan gratuito)"; continue; }
 
   # Entorno sin protección según el tipo del catálogo: previews de Pages (static)
   # o el servicio <service>-dev (webapp).
