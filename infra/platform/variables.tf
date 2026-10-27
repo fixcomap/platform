@@ -4,6 +4,12 @@ variable "project_id" {
   default     = "fixcomap-core"
 }
 
+variable "alert_email" {
+  description = "Destino de las alertas de disponibilidad (secret ALERT_EMAIL)."
+  type        = string
+  sensitive   = true
+}
+
 variable "region" {
   description = "Región de Artifact Registry y Cloud Run."
   type        = string
