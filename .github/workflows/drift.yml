@@ -11,10 +11,8 @@ env:
   GCP_PROJECT_ID: fixcomap-core
   GCP_REGION: europe-west1
   STATE_BUCKET: fixcomap-core-tfstate
-  STATE_BUCKET_APP: fixcomap-core-tfstate-app # estado de L2, bucket propio de gh-deployer
   TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
   TOFU_VERSION: 1.12.6
-  CLOUD_RUN_SERVICE: app
 
 permissions: {}
 
@@ -40,7 +38,6 @@ jobs:
         include:
           - { layer: bootstrap, bucket: fixcomap-core-tfstate }
           - { layer: platform, bucket: fixcomap-core-tfstate }
-          - { layer: app, bucket: fixcomap-core-tfstate-app }
     defaults:
       run:
         # los defaults de job no heredan el shell del workflow: pipefail también aquí
@@ -73,13 +70,6 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
             echo "::warning title=capa sin estado::infra/${{ matrix.layer }} nunca se ha aplicado; drift omitido."
           fi
-
-      - name: imagen desplegada (L2)
-        if: matrix.layer == 'app' && steps.state.outputs.exists == 'true'
-        run: |
-          IMAGE=$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
-            --format 'value(spec.template.spec.containers[0].image)' 2>/dev/null || true)
-          echo "TF_VAR_image=${IMAGE:-us-docker.pkg.dev/cloudrun/container/hello}" >> "$GITHUB_ENV"
 
       - name: tofu plan -detailed-exitcode
         id: plan

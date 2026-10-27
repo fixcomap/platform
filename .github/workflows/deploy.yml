@@ -1,10 +1,9 @@
 # Único workflow de despliegue. Corre en CADA push a main, sin filtro de paths:
 # una release garantiza que plataforma y app están aplicadas, no solo "si este
-# merge tocó infra/**". Cuatro jobs, cada uno con su identidad:
+# merge tocó infra/**". Tres jobs, cada uno con su identidad:
 #
 #   platform-plan  (tf-plan, solo lectura)  -> ¿hay cambios en L0/L1? ¿arranque en frío? ¿cambió dns?
 #   platform-apply (tf-platform, environment platform, aprobación) -> solo si el anterior lo pide
-#   app            (gh-deployer)            -> destruye L2 retirada (app, app-dev)
 #   tag            (GITHUB_TOKEN)           -> tag vX.Y.Z de la versión
 #
 # platform-apply es el único job que puede crear IAM: la condición OIDC de
@@ -20,7 +19,6 @@ env:
   GCP_PROJECT_ID: fixcomap-core
   GCP_REGION: europe-west1
   STATE_BUCKET: fixcomap-core-tfstate
-  STATE_BUCKET_APP: fixcomap-core-tfstate-app # estado de L2, bucket propio de gh-deployer
   TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
   TF_PLATFORM_SA: tf-platform@fixcomap-core.iam.gserviceaccount.com
   GH_DEPLOYER_SA: gh-deployer@fixcomap-core.iam.gserviceaccount.com
@@ -242,41 +240,6 @@ jobs:
           { echo "## apply infra/observability"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           tofu apply -input=false tfplan
           echo "dashboard: $(tofu output -raw dashboard_url)" >> "$GITHUB_STEP_SUMMARY"
-
-  app:
-    name: app (gh-deployer, retirada)
-    needs: [platform-plan, platform-apply]
-    # Corre si platform-apply terminó bien o se saltó por no ser necesario; nunca
-    # si falló o fue rechazado, porque L2 depende de L1.
-    if: ${{ !cancelled() && needs.platform-plan.result == 'success' && needs.platform-apply.result != 'failure' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write   # OIDC para GCP
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: auth GCP (gh-deployer)
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
-          service_account: ${{ env.GH_DEPLOYER_SA }}
-
-      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
-        with:
-          tofu_version: ${{ env.TOFU_VERSION }}
-          tofu_wrapper: false
-
-      - name: destroy L2 (app y app-dev)
-        # infra/app ya no declara recursos: aplicarla destruye lo que quede en cada estado.
-        working-directory: infra/app
-        run: |
-          for p in app app-dev; do
-            tofu init -input=false -reconfigure -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=$p"
-            tofu plan -input=false -no-color -out=tfplan
-            { echo "## destroy infra/app ($p)"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-            tofu apply -input=false tfplan
-          done
 
   tag:
     name: tag vVERSION

@@ -1,1 +1,1 @@
-["gitflow (rama origen)", "app (lint + test)", "catalog (esquema)", "gitleaks + trivy", "tofu (bootstrap)", "tofu (platform)", "tofu (app)", "tofu (dns)"]
+["gitflow (rama origen)", "catalog (esquema)", "gitleaks + trivy", "tofu (bootstrap)", "tofu (platform)", "tofu (dns)"]

@@ -10,10 +10,8 @@ env:
   GCP_PROJECT_ID: fixcomap-core
   GCP_REGION: europe-west1
   STATE_BUCKET: fixcomap-core-tfstate
-  STATE_BUCKET_APP: fixcomap-core-tfstate-app # estado de L2, bucket propio de gh-deployer
   TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
   TOFU_VERSION: 1.12.6
-  CLOUD_RUN_SERVICE: app
 
 permissions: {}
 
@@ -97,30 +95,6 @@ jobs:
           [ -z "$dup" ] || fail catalog "webapp.service repetidos: $dup"
           exit "$err"
 
-  app:
-    name: app (lint + test)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    defaults:
-      run:
-        shell: bash
-        working-directory: app
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: app/go.mod
-      - name: gofmt
-        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
-      - name: go vet
-        run: go vet ./...
-      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          working-directory: app
-      - name: go test
-        run: go test -race ./...
-
   security:
     name: gitleaks + trivy
     runs-on: ubuntu-latest
@@ -173,7 +147,6 @@ jobs:
         include:
           - { layer: bootstrap, plan: true, bucket: fixcomap-core-tfstate }
           - { layer: platform, plan: true, bucket: fixcomap-core-tfstate }
-          - { layer: app, plan: true, bucket: fixcomap-core-tfstate-app }
           # webapp: un estado por servicio; se planifica en el pipeline de cada repo.
           - { layer: webapp, plan: false, bucket: fixcomap-core-tfstate-app }
           - { layer: dns, plan: false, bucket: fixcomap-core-tfstate }
@@ -275,15 +248,6 @@ jobs:
             echo "::warning title=plan omitido (capa sin estado)::infra/${{ matrix.layer }} no se ha aplicado nunca; no hay estado que planificar. Lo crea deploy.yml."
             echo "## :warning: plan omitido: \`infra/${{ matrix.layer }}\` aún no tiene estado en \`gs://${{ matrix.bucket }}/${{ matrix.layer }}/\`. Lo crea \`deploy.yml\`." >> "$GITHUB_STEP_SUMMARY"
           fi
-
-      - name: imagen desplegada (L2)
-        # El plan de L2 necesita var.image. Se toma la del servicio en producción para
-        # que el plan refleje solo cambios de infra, no de imagen.
-        if: matrix.layer == 'app' && steps.state.outputs.exists == 'true'
-        run: |
-          IMAGE=$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
-            --format 'value(spec.template.spec.containers[0].image)' 2>/dev/null || true)
-          echo "TF_VAR_image=${IMAGE:-us-docker.pkg.dev/cloudrun/container/hello}" >> "$GITHUB_ENV"
 
       - name: tofu plan
         id: plan
