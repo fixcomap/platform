@@ -78,9 +78,12 @@ for repo in "$@"; do
   write PUT "repos/$ORG/$repo/actions/permissions" '{"enabled": true, "allowed_actions": "selected"}'
   write PUT "repos/$ORG/$repo/actions/permissions/selected-actions" "$(cat "$DIR/acciones-permitidas.json")"
   echo "$repo: acciones limitadas a acciones-permitidas.json"
-  # Un PR desde un fork no ejecuta nada hasta que un admin lo aprueba.
-  write PUT "repos/$ORG/$repo/actions/permissions/fork-pr-contributor-approval" '{"approval_policy": "all_external_contributors"}'
-  echo "$repo: workflows de PR de forks con aprobación siempre"
+  # Un PR desde un fork no ejecuta nada hasta que un admin lo aprueba (en un privado
+  # no hay forks de fuera y GitHub no admite el ajuste).
+  if [ "$publico" = true ]; then
+    write PUT "repos/$ORG/$repo/actions/permissions/fork-pr-contributor-approval" '{"approval_policy": "all_external_contributors"}'
+    echo "$repo: workflows de PR de forks con aprobación siempre"
+  fi
 
   # platform no tiene previews ni producción propia: su único environment es "platform".
   [ "$repo" != platform ] || continue
