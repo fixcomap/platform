@@ -448,6 +448,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # Postgres de usar y tirar para los tests de integración: con las migraciones de
+    # la app aplicadas (webapp.migrate) y en DATABASE_URL / TEST_DATABASE_URL para los tests.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pruebas
+          POSTGRES_PASSWORD: pruebas
+          POSTGRES_DB: pruebas
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pruebas" --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgres://pruebas:pruebas@localhost:5432/pruebas
+      TEST_DATABASE_URL: postgres://pruebas:pruebas@localhost:5432/pruebas?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -481,6 +496,15 @@ jobs:
         if: needs.resolve.outputs.runtime == 'node'
         with:
           node-version: ${{ needs.resolve.outputs.node_version }}
+      - name: migraciones en la base de pruebas
+        if: needs.resolve.outputs.runtime == 'node' && needs.resolve.outputs.migrate != ''
+        working-directory: ${{ needs.resolve.outputs.context }}
+        env:
+          MIGRATE: ${{ needs.resolve.outputs.migrate }}
+        run: |
+          npm ci --no-audit --no-fund
+          bash -euo pipefail -c "$MIGRATE"
+
       - name: npm ci + lint + test + build
         if: needs.resolve.outputs.runtime == 'node'
         env:
