@@ -27,25 +27,6 @@ variable "app_runtime_email" {
   default     = "app-runtime@fixcomap-core.iam.gserviceaccount.com"
 }
 
-variable "app_hostname" {
-  description = "Hostname público que sondea el uptime check; el mapping vive en L1 y el CNAME en infra/dns."
-  type        = string
-  default     = "plantilla.fixcomap.com"
-}
-
-variable "landing_hostname" {
-  description = "Hostname público de la landing (Cloudflare Pages, repo fixcomap/web); solo se sondea desde aquí."
-  type        = string
-  default     = "fixcomap.com"
-}
-
-variable "alert_email" {
-  description = "Destino de las alertas de disponibilidad (secret ALERT_EMAIL)."
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
 variable "otlp_endpoint" {
   description = "Endpoint OTLP/HTTP de Grafana Cloud (p.ej. https://otlp-gateway-prod-eu-west-2.grafana.net/otlp). Vacío = la app no exporta telemetría."
   type        = string
@@ -95,8 +76,3 @@ variable "base_url" {
   default     = "https://plantilla.fixcomap.com"
 }
 
-variable "enable_monitoring" {
-  description = "Uptime checks y alertas. Solo producción: desarrollo no avisa a nadie."
-  type        = bool
-  default     = true
-}

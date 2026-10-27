@@ -91,11 +91,9 @@ jobs:
         env:
           TF_VAR_image: ${{ env.IMAGE_DIGEST }}
           TF_VAR_service_name: app-dev
-          TF_VAR_app_hostname: plantilla.dev.fixcomap.com
           TF_VAR_environment: development
           TF_VAR_db_name: app_dev
           TF_VAR_base_url: https://plantilla.dev.fixcomap.com
-          TF_VAR_enable_monitoring: "false"
           TF_VAR_otlp_endpoint: "" # sin telemetría: no gasta cuota de Grafana Cloud
         run: |
           tofu init -input=false -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=app-dev"
