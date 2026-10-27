@@ -58,7 +58,7 @@ jobs:
 
       - name: cloud run sin facturación en reposo
         run: |
-          f=infra/app/cloud_run.tf
+          f=infra/webapp/cloud_run.tf
           fail=0
           grep -qE 'min_instance_count\s*=\s*0' $f || { echo "::error file=$f::min_instance_count debe ser 0 (instancias mínimas facturan 24/7)"; fail=1; }
           grep -qE 'cpu_idle\s*=\s*true' $f       || { echo "::error file=$f::cpu_idle debe ser true (CPU always-on factura sin tráfico)"; fail=1; }

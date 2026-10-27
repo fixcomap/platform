@@ -1,10 +1,11 @@
 # Único workflow de despliegue. Corre en CADA push a main, sin filtro de paths:
 # una release garantiza que plataforma y app están aplicadas, no solo "si este
-# merge tocó infra/**". Tres jobs en secuencia, cada uno con su identidad:
+# merge tocó infra/**". Cuatro jobs, cada uno con su identidad:
 #
 #   platform-plan  (tf-plan, solo lectura)  -> ¿hay cambios en L0/L1? ¿arranque en frío? ¿cambió dns?
 #   platform-apply (tf-platform, environment platform, aprobación) -> solo si el anterior lo pide
-#   app            (gh-deployer)            -> build, trivy, cosign, push, apply L2, tag
+#   app            (gh-deployer)            -> destruye L2 retirada (app, app-dev)
+#   tag            (GITHUB_TOKEN)           -> tag vX.Y.Z de la versión
 #
 # platform-apply es el único job que puede crear IAM: la condición OIDC de
 # tf-platform exige environment == platform, y ese environment exige aprobación.
@@ -23,7 +24,6 @@ env:
   TF_PLAN_SA: tf-plan@fixcomap-core.iam.gserviceaccount.com
   TF_PLATFORM_SA: tf-platform@fixcomap-core.iam.gserviceaccount.com
   GH_DEPLOYER_SA: gh-deployer@fixcomap-core.iam.gserviceaccount.com
-  IMAGE_REPO: europe-west1-docker.pkg.dev/fixcomap-core/docker/app
   TOFU_VERSION: 1.12.6
   TF_VAR_project_number: ${{ vars.GCP_PROJECT_NUMBER }}
 
@@ -244,15 +244,15 @@ jobs:
           echo "dashboard: $(tofu output -raw dashboard_url)" >> "$GITHUB_STEP_SUMMARY"
 
   app:
-    name: app (gh-deployer)
+    name: app (gh-deployer, retirada)
     needs: [platform-plan, platform-apply]
     # Corre si platform-apply terminó bien o se saltó por no ser necesario; nunca
     # si falló o fue rechazado, porque L2 depende de L1.
     if: ${{ !cancelled() && needs.platform-plan.result == 'success' && needs.platform-apply.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # crear el tag vX.Y.Z
-      id-token: write   # OIDC para GCP y para la firma keyless de cosign
+      contents: read
+      id-token: write   # OIDC para GCP
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -262,67 +262,36 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ env.GH_DEPLOYER_SA }}
 
-      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-
-      - name: docker login (Artifact Registry)
-        run: gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev" --quiet
-
-      - name: versión
-        run: |
-          echo "VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
-          echo "SHORT_SHA=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
-
-      - name: build
-        # --provenance=false: sin manifiestos de attestation, que en Artifact Registry
-        # aparecen como versiones sin tag y ocupan cuota.
-        run: |
-          docker build --provenance=false \
-            -t "$IMAGE_REPO:$SHORT_SHA" -t "$IMAGE_REPO:v$VERSION" app
-
-      - name: trivy image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          scan-type: image
-          image-ref: ${{ env.IMAGE_REPO }}:${{ env.SHORT_SHA }}
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-
-      - name: push
-        run: |
-          docker push "$IMAGE_REPO:$SHORT_SHA"
-          docker push "$IMAGE_REPO:v$VERSION"
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_REPO:$SHORT_SHA")
-          echo "IMAGE_DIGEST=$DIGEST" >> "$GITHUB_ENV"
-          echo "imagen: $DIGEST" >> "$GITHUB_STEP_SUMMARY"
-
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-      - name: cosign sign (keyless)
-        # Firma por digest con la identidad OIDC del workflow; verificable con
-        # --certificate-identity-regexp y --certificate-oidc-issuer.
-        run: cosign sign --yes "$IMAGE_DIGEST"
-
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
           tofu_version: ${{ env.TOFU_VERSION }}
           tofu_wrapper: false
 
-      - name: apply L2 (app)
+      - name: destroy L2 (app y app-dev)
+        # infra/app ya no declara recursos: aplicarla destruye lo que quede en cada estado.
         working-directory: infra/app
-        env:
-          TF_VAR_image: ${{ env.IMAGE_DIGEST }}
-          TF_VAR_otlp_endpoint: ${{ vars.OTLP_ENDPOINT }} # var de repo (no es secreto); vacía = sin telemetría
         run: |
-          tofu init -input=false -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=app"
-          tofu plan -input=false -no-color -out=tfplan
-          { echo "## apply infra/app"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          tofu apply -input=false tfplan
-          echo "url: $(tofu output -raw service_url)" >> "$GITHUB_STEP_SUMMARY"
+          for p in app app-dev; do
+            tofu init -input=false -reconfigure -backend-config="bucket=$STATE_BUCKET_APP" -backend-config="prefix=$p"
+            tofu plan -input=false -no-color -out=tfplan
+            { echo "## destroy infra/app ($p)"; echo '```hcl'; tofu show -no-color tfplan; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            tofu apply -input=false tfplan
+          done
+
+  tag:
+    name: tag vVERSION
+    needs: [platform-plan, platform-apply]
+    if: ${{ !cancelled() && needs.platform-plan.result == 'success' && needs.platform-apply.result != 'failure' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # crear el tag vX.Y.Z
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: tag vVERSION
         # Solo si no existe: un hotfix que no toque VERSION no re-etiqueta.
         run: |
+          VERSION=$(tr -d '[:space:]' < VERSION)
           if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
             echo "tag v$VERSION ya existe"; exit 0
           fi
