@@ -9,6 +9,7 @@
 #   environment development            sin aprobación; solo despliega desde develop (webapp)
 #   environment production             solo si falta: aprobación del admin, ramas protegidas
 #   acciones-permitidas.json           solo acciones de GitHub, de fixcomap y las que usa el pipeline
+#   CodeQL (repos públicos)            configuración por defecto; el merge se bloquea con alertas altas
 #   PR de forks                        sus workflows esperan aprobación siempre (no solo la primera vez)
 #
 # Idempotente: crea o actualiza cada ruleset por nombre. Un production que ya
@@ -36,16 +37,23 @@ write() { # write <método> <path> <body>
 for repo in "$@"; do
   checks="$DIR/checks/$repo.json"
   [ -f "$checks" ] || checks="$DIR/checks/default.json"
-  existing=$(gh api "repos/$ORG/$repo/rulesets" --jq '.[] | select(.source_type == "Repository") | "\(.name)\t\(.id)"')
+  # Rulesets y code scanning (CodeQL) solo en repos públicos: en los privados el plan
+  # gratuito no tiene rulesets y CodeQL exige Advanced Security (de pago).
+  publico=$(gh api "repos/$ORG/$repo" --jq '.visibility == "public"')
+  existing=""
+  [ "$publico" != true ] || existing=$(gh api "repos/$ORG/$repo/rulesets" --jq '.[] | select(.source_type == "Repository") | "\(.name)\t\(.id)"')
+  [ "$publico" = true ] || echo "$repo: privado, sin rulesets (plan gratuito)"
 
   for f in "$DIR"/rulesets/*.json; do
+    [ "$publico" = true ] || break
     name=$(jq -r .name "$f")
     # BOOTSTRAP=1: rulesets desactivados para el push inicial de un repo nuevo
     # (crear develop y main sin PR); después, apply.sh sin BOOTSTRAP los activa.
-    body=$(jq --slurpfile c "$checks" --arg enf "${BOOTSTRAP:+disabled}" '
+    body=$(jq --slurpfile c "$checks" --arg enf "${BOOTSTRAP:+disabled}" --arg pub "$publico" '
       .rules |= map(if .type == "required_status_checks"
         then .parameters.required_status_checks = ($c[0] | map({context: .}))
         else . end)
+      | if $pub != "true" then .rules |= map(select(.type != "code_scanning")) else . end
       | if $enf != "" then .enforcement = $enf else . end' "$f")
     id=$(awk -F'\t' -v n="$name" '$1 == n {print $2}' <<<"$existing")
     if [ -n "$id" ]; then
@@ -57,16 +65,30 @@ for repo in "$@"; do
     fi
   done
 
+  # CodeQL con la configuración por defecto (lenguajes detectados por GitHub):
+  # analiza cada PR y cada push; los rulesets bloquean el merge con alertas altas.
+  if [ "$publico" = true ]; then
+    write PATCH "repos/$ORG/$repo/code-scanning/default-setup" '{"state": "configured", "query_suite": "default"}'
+    echo "$repo: CodeQL activado"
+  else
+    echo "$repo: privado, sin CodeQL (requiere Advanced Security)"
+  fi
+
   # Acciones: solo las de la lista (el pipeline y sus pasos); el resto no corre.
   write PUT "repos/$ORG/$repo/actions/permissions" '{"enabled": true, "allowed_actions": "selected"}'
   write PUT "repos/$ORG/$repo/actions/permissions/selected-actions" "$(cat "$DIR/acciones-permitidas.json")"
   echo "$repo: acciones limitadas a acciones-permitidas.json"
-  # Un PR desde un fork no ejecuta nada hasta que un admin lo aprueba.
-  write PUT "repos/$ORG/$repo/actions/permissions/fork-pr-contributor-approval" '{"approval_policy": "all_external_contributors"}'
-  echo "$repo: workflows de PR de forks con aprobación siempre"
+  # Un PR desde un fork no ejecuta nada hasta que un admin lo aprueba (en un privado
+  # no hay forks de fuera y GitHub no admite el ajuste).
+  if [ "$publico" = true ]; then
+    write PUT "repos/$ORG/$repo/actions/permissions/fork-pr-contributor-approval" '{"approval_policy": "all_external_contributors"}'
+    echo "$repo: workflows de PR de forks con aprobación siempre"
+  fi
 
   # platform no tiene previews ni producción propia: su único environment es "platform".
   [ "$repo" != platform ] || continue
+  # Privados: el plan gratuito no admite reglas en los environments (ramas, reviewers).
+  [ "$publico" = true ] || { echo "$repo: privado, environments sin reglas (plan gratuito)"; continue; }
 
   # Entorno sin protección según el tipo del catálogo: previews de Pages (static)
   # o el servicio <service>-dev (webapp).
