@@ -308,6 +308,15 @@ jobs:
           docker run --rm -v "$PWD/$SITE_DIR:/site:ro" ghcr.io/validator/validator:24.10.17 \
             vnu --skip-non-html --errors-only --also-check-css /site
 
+      - name: lint
+        # Sitio con código propio (script build: React, TypeScript...): lint obligatorio.
+        if: hashFiles('package.json') != ''
+        run: |
+          node -e "process.exit(require('./package.json').scripts?.build ? 0 : 1)" || { echo "sin build: HTML/CSS, lo validan W3C y stylelint"; exit 0; }
+          node -e "process.exit(require('./package.json').scripts?.lint ? 0 : 1)" \
+            || { echo "::error file=package.json::falta el script \"lint\" (obligatorio en sitios con build)"; exit 1; }
+          npm run -s lint
+
       - name: stylelint
         # Solo si el repo define el script.
         if: hashFiles('package.json') != ''
@@ -466,8 +475,8 @@ jobs:
         if: needs.resolve.outputs.runtime == 'go'
         run: go test -race ./...
 
-      # node: cada paquete con package-lock.json (monorepo o no) pasa por npm ci y
-      # por los scripts lint, test y build que defina; los que no define, se saltan.
+      # node: cada paquete con package-lock.json (monorepo o no) pasa por npm ci,
+      # lint y test (obligatorios: estándar de calidad de la org) y build si lo define.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: needs.resolve.outputs.runtime == 'node'
         with:
@@ -481,9 +490,17 @@ jobs:
           while IFS= read -r kv; do [ -n "$kv" ] && export "${kv?}"; done <<< "$FRONT_ENV"
           mapfile -t dirs < <(git ls-files '*package-lock.json' 'package-lock.json' | xargs -rn1 dirname | sort -u)
           [ "${#dirs[@]}" -gt 0 ] || { echo "::error::runtime node sin ningún package-lock.json"; exit 1; }
+          falta=0
+          for d in "${dirs[@]}"; do
+            for s in lint test; do
+              node -e "process.exit(require('./$d/package.json').scripts?.$s ? 0 : 1)" \
+                || { echo "::error file=$d/package.json::falta el script \"$s\" (lint y test son obligatorios)"; falta=1; }
+            done
+          done
+          [ "$falta" = 0 ] || exit 1
           for d in "${dirs[@]}"; do
             echo "::group::$d"
-            (cd "$d" && npm ci --no-audit --no-fund && npm run --if-present lint && npm test --if-present && npm run --if-present build)
+            (cd "$d" && npm ci --no-audit --no-fund && npm run lint && npm test && npm run --if-present build)
             echo "::endgroup::"
           done
 
