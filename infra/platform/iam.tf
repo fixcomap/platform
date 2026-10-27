@@ -14,74 +14,12 @@ resource "google_project_iam_member" "gh_deployer_run" {
   member  = google_service_account.gh_deployer.member
 }
 
-# Uptime check, canal de notificación y política de alerta de la app (L2).
-# monitoring.editor no incluye ningún setIamPolicy.
-resource "google_project_iam_member" "gh_deployer_monitoring" {
-  project = var.project_id
-  role    = "roles/monitoring.editor"
-  member  = google_service_account.gh_deployer.member
-}
-
-# actAs sobre app-runtime, y solo sobre ella: es lo que Cloud Run exige para
-# desplegar un servicio con esa identidad.
-resource "google_service_account_iam_member" "gh_deployer_actas_runtime" {
-  service_account_id = google_service_account.app_runtime.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = google_service_account.gh_deployer.member
-}
-
 # Push de imágenes y firmas cosign, limitado al repositorio.
 resource "google_artifact_registry_repository_iam_member" "gh_deployer_writer" {
   location   = google_artifact_registry_repository.docker.location
   repository = google_artifact_registry_repository.docker.name
   role       = "roles/artifactregistry.writer"
   member     = google_service_account.gh_deployer.member
-}
-
-# Estado de L2 y nada más: bucket propio, sin condiciones. Las condiciones IAM
-# por prefijo no autorizan storage.objects.list, que el backend gcs necesita en
-# init, así que el aislamiento se hace por bucket y no por prefijo.
-resource "google_storage_bucket_iam_member" "gh_deployer_state" {
-  bucket = var.state_bucket_app
-  role   = "roles/storage.objectUser"
-  member = google_service_account.gh_deployer.member
-}
-
-# Solo desde main. En PR no hay token para gh-deployer, así que un PR no puede
-# desplegar ni publicar imágenes.
-resource "google_service_account_iam_member" "gh_deployer_wif" {
-  service_account_id = google_service_account.gh_deployer.name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${local.wif_pool}/attribute.repository_ref/${local.repo}:refs/heads/main"
-}
-
-# También desde develop, para deploy-dev.yml.
-resource "google_service_account_iam_member" "gh_deployer_wif_develop" {
-  service_account_id = google_service_account.gh_deployer.name
-  role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${local.wif_pool}/attribute.repository_ref/${local.repo}:refs/heads/develop"
-}
-
-# ---------- app-runtime ----------
-
-# Lee el secreto de configuración. secretAccessor sobre el secreto concreto,
-# no sobre el proyecto.
-resource "google_secret_manager_secret_iam_member" "app_runtime_config" {
-  secret_id = google_secret_manager_secret.app_config.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = google_service_account.app_runtime.member
-}
-
-resource "google_secret_manager_secret_iam_member" "app_runtime_otlp_headers" {
-  secret_id = google_secret_manager_secret.otlp_headers.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = google_service_account.app_runtime.member
-}
-
-resource "google_secret_manager_secret_iam_member" "app_runtime_database_url" {
-  secret_id = google_secret_manager_secret.database_url.id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = google_service_account.app_runtime.member
 }
 
 # ---------- tf-plan ----------

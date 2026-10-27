@@ -45,13 +45,6 @@
         "major"
       ],
       "enabled": false
-    },
-    {
-      "matchManagers": [
-        "dockerfile",
-        "gomod"
-      ],
-      "groupName": "app"
     }
   ],
   "customManagers": [

@@ -26,5 +26,4 @@ CLAUDE.md
 .env.*
 !.env.example
 node_modules/
-/app/app
 .DS_Store
