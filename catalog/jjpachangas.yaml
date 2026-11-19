@@ -8,6 +8,7 @@ webapp:
   node_version: "22"
   context: apps/api
   health_path: /salud          # hace SELECT 1: el deploy falla si la API no ve la base
+  uptime_path: /vivo           # sin base: Neon se suspende entre sondas
   # Alta en dos releases: público por entorno tras su primer deploy.
   public: false
   monitoring: true

@@ -3,7 +3,7 @@
 # regiones), políticas de alerta y notificaciones por email sin coste.
 #
 # Una sonda por webapp con monitoring: true y producción public, contra su
-# health_path por el primer hostname: valida a la vez DNS, el certificado
+# uptime_path por el primer hostname: valida a la vez DNS, el certificado
 # gestionado, el domain mapping y el servicio. Además la landing, que no vive
 # en GCP (Cloudflare Pages) pero avisa al mismo buzón.
 locals {
@@ -11,7 +11,7 @@ locals {
     {
       for s, e in local.webapp_services : s => {
         host = e.hostnames[0]
-        path = e.health_path
+        path = e.uptime_path
         doc  = "Revisar Cloud Run (servicio `${s}`, ${var.region}), el domain mapping y el certificado."
       } if e.environment == "production" && e.public && local.webapps[e.webapp].monitoring
     },
