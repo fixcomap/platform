@@ -8,6 +8,7 @@ webapp:
   node_version: "22"
   context: apps/api            # carpeta con el Dockerfile de la API
   health_path: /salud          # hace SELECT 1: el deploy falla si la API no ve la base
+  uptime_path: /vivo           # sin base: Neon se suspende entre sondas
   # false hasta que el primer deploy haya creado los servicios (alta en dos releases).
   public: false
   monitoring: true

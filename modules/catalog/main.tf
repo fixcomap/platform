@@ -21,6 +21,9 @@ locals {
       public      = try(v.webapp.public, false)
       monitoring  = try(v.webapp.monitoring, false)
       health_path = try(v.webapp.health_path, "/health")
+      # Sonda de disponibilidad: por defecto health_path; una ruta sin base
+      # deja que Neon se suspenda entre sondas.
+      uptime_path = try(v.webapp.uptime_path, try(v.webapp.health_path, "/health"))
       # Contrato original (plantilla): APP_CONFIG + DATABASE_URL_FILE, secretos
       # <service>-config y <service>-database-url compartidos por los dos entornos.
       # Con webapp.secrets, en su lugar una variable de entorno por secreto y
@@ -47,6 +50,7 @@ locals {
         # antes de que exista el servicio de producción.
         public      = try(w[e].public, w.public)
         health_path = w.health_path
+        uptime_path = w.uptime_path
         legacy      = w.legacy
         runtime_sa  = "${w.service}-runtime"
         config      = "${w.service}-config"
