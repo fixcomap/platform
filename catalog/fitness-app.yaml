@@ -1,0 +1,22 @@
+# Fitness: app móvil (Expo, se publica aparte) y API Node/Express en Cloud Run,
+# Postgres en Neon (rol fitness, bases fitness y fitness_dev).
+repo: fixcomap/fitness-app
+type: webapp
+webapp:
+  service: fitness             # API: fitness (producción) y fitness-dev
+  runtime: node
+  node_version: "24"
+  context: apps/api
+  health_path: /salud          # hace SELECT 1: el deploy falla si la API no ve la base
+  uptime_path: /vivo           # sin base: Neon se suspende entre sondas
+  # Alta en dos releases: público por entorno tras su primer deploy.
+  public: false
+  monitoring: true
+  secrets: [DATABASE_URL]
+  env:
+    API_URL: "{api_url}"
+  migrate: npm run migrar
+  production:
+    hostnames: [api-fitness.fixcomap.com]
+  development:
+    hostnames: [api-fitness.dev.fixcomap.com]
