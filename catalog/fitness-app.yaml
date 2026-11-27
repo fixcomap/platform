@@ -12,9 +12,10 @@ webapp:
   # Alta en dos releases: público por entorno tras su primer deploy.
   public: false
   monitoring: true
-  secrets: [DATABASE_URL]
+  secrets: [DATABASE_URL, ANTHROPIC_API_KEY]
   env:
     API_URL: "{api_url}"
+    IA_PROVEEDOR: "claude"
   migrate: npm run migrar
   production:
     hostnames: [api-fitness.fixcomap.com]
