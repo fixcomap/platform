@@ -20,6 +20,8 @@ locals {
       runtime     = try(v.webapp.runtime, "go")
       public      = try(v.webapp.public, false)
       monitoring  = try(v.webapp.monitoring, false)
+      # vertex_ai: la cuenta de runtime puede llamar a Vertex AI (se factura en el proyecto).
+      vertex_ai   = try(v.webapp.vertex_ai, false)
       health_path = try(v.webapp.health_path, "/health")
       # Sonda de disponibilidad: por defecto health_path; una ruta sin base
       # deja que Neon se suspenda entre sondas.
