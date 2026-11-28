@@ -12,10 +12,13 @@ webapp:
   # Alta en dos releases: público por entorno tras su primer deploy.
   public: false
   monitoring: true
-  secrets: [DATABASE_URL, ANTHROPIC_API_KEY]
+  # IA con Claude en Vertex AI: sin claves, la cuenta de runtime y la factura de GCP.
+  vertex_ai: true
+  secrets: [DATABASE_URL]
   env:
     API_URL: "{api_url}"
-    IA_PROVEEDOR: "claude"
+    IA_PROVEEDOR: "vertex-claude"
+    IA_VERTEX_PROYECTO: "fixcomap-core"
   migrate: npm run migrar
   production:
     hostnames: [api-fitness.fixcomap.com]

@@ -65,6 +65,16 @@ resource "google_service_account" "webapp_runtime" {
   display_name = "Cloud Run: ${each.key} (catalog/${each.key}.yaml)"
 }
 
+# Vertex AI (modelos de Model Garden) sin claves: la cuenta de runtime de las
+# webapps con vertex_ai: true. El gasto va a la factura del proyecto.
+resource "google_project_iam_member" "webapp_runtime_vertex" {
+  for_each = { for k, w in local.webapps : k => w if w.vertex_ai }
+
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = google_service_account.webapp_runtime[each.key].member
+}
+
 # gh-deployer solo para los servicios que aún no existen (deployers.tf): el
 # resto los despliega <service>-deployer.
 resource "google_service_account_iam_member" "gh_deployer_actas_webapp" {
